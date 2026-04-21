@@ -1,34 +1,14 @@
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-html {
-  height: 100%;
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
-}
-
-body {
-  min-height: 100%;
-  display: flex;
-  flex-direction: column;
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  --bg-primary: #f5f5f7;
+  --bg-secondary: #161b22;
+  --accent-primary: #f2f2f2;
+  --accent-secondary: #f3f2f2a1;
+  --text-primary: #171717;
+  --text-secondary: #ebebeb;
+  --success: #238636;
+  --warning: #d29922;
+  --error: #f85149;
+  --glass: rgba(22, 27, 34, 0.8);
 }
 
 * {
@@ -37,13 +17,176 @@ body {
   margin: 0;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "Forum", sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
+.container {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem;
+  width: 100%;
+}
+
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 2rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(8px);
+}
+
+h1 {
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin-bottom: 0.5rem;
+  background-image: linear-gradient(-20deg, #6e45e2 0%, #88d3ce 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+p.subtitle {
+  color: var(--text-secondary);
+  margin-bottom: 2rem;
+}
+
+.btn {
+  background: var(--accent-primary);
+  color: var(--text-primary);
+  border: none;
+  padding: 0.5rem 1rem;
+  font-family: "Forum", sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn:hover {
+  background: var(--accent-secondary);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(88, 166, 255, 0.3);
+}
+
+.btn:disabled {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  transform: none;
+}
+
+.progress-container {
+  margin-top: 2rem;
+}
+
+.progress-bar-bg {
+  background: #30363d;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.progress-bar-fill {
+  background: linear-gradient(90deg, var(--accent-primary), #bc8cff);
+  height: 100%;
+  width: var(--progress, 0%);
+  transition: width 0.3s ease;
+}
+
+.progress-label {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.progress-status {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.action-container {
+  margin-top: 2rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.btn-success {
+  background: var(--success);
+}
+
+.btn-success:hover {
+  background: #2ea043;
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid #30363d;
+}
+
+.btn-outline:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.footer {
+  margin-top: 3rem;
+  text-align: center;
+  color: var(--text-primary);
+  font-size: 0.8rem;
+}
+
+.log-container {
+  margin-top: 2rem;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  height: 200px;
+  overflow-y: auto;
+  padding: 1rem;
+  font-family:
+    "ui-monospace", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+  font-size: 0.85rem;
+}
+
+.log-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.25rem;
+  color: var(--text-secondary);
+}
+
+.log-entry.success {
+  color: var(--success);
+}
+.log-entry.error {
+  color: var(--error);
+}
+.log-entry.info {
+  color: var(--accent-primary);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #8b949e;
 }
