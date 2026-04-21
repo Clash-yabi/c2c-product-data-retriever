@@ -42,7 +42,10 @@ body {
   backdrop-filter: blur(8px);
 }
 
-h1 {
+.card__title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 2.5rem;
   font-weight: 800;
   margin-bottom: 0.5rem;
@@ -163,10 +166,11 @@ p.subtitle {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.25rem;
-  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+  color: #ebebeb;
+  font-size: 0.85rem;
+  line-height: 1.4;
 }
-
 .log-entry.success {
   color: var(--success);
 }
