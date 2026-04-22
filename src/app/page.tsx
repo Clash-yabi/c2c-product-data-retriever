@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Rocket, Check, X, ChevronLeft, Download } from "lucide-react";
+import { formattedDate } from "@helpers/dateConverter";
 
 export default function Home() {
   const [isExtracting, setIsExtracting] = useState(false);
@@ -57,11 +58,14 @@ export default function Home() {
 
       const link = document.createElement("a");
       link.href = downloadUrl;
-      link.setAttribute("download", "C2C_Certified_Report.xlsx");
-      link.download = "C2C_Certified_Report.xlsx";
-      
+      link.setAttribute(
+        "download",
+        `C2C_Certified_Report-${formattedDate()}.xlsx`,
+      );
+      link.download = `C2C_Certified_Report-${formattedDate()}.xlsx`;
+
       document.body.appendChild(link);
-      
+
       // Delay click by 50ms: some browsers ignore immediate clicks on new elements
       setTimeout(() => {
         link.click();
@@ -152,7 +156,7 @@ export default function Home() {
 
   return (
     <main className="container">
-      <div className="card">
+      <article className="card">
         <h1 className="card__title">
           <Rocket size={60} color="#7F9FD5" /> C2C Scraper v2.3
         </h1>
@@ -174,7 +178,7 @@ export default function Home() {
             </button>
             <button
               className="btn btn-outline"
-              onClick={() => startExtraction(20)}
+              onClick={() => startExtraction(5)}
             >
               <span>🧪</span> Run Test (20 products)
             </button>
@@ -182,7 +186,7 @@ export default function Home() {
         )}
 
         {isExtracting && (
-          <div className="progress-container">
+          <section className="progress-container">
             <p className="progress-label">{currentProduct}</p>
             <div className="progress-bar-bg">
               <div
@@ -200,7 +204,7 @@ export default function Home() {
                 ? "Searching for products..."
                 : `${progress} of ${total} products processed`}
             </p>
-          </div>
+          </section>
         )}
 
         {results.length > 0 && !isExtracting && (
@@ -241,7 +245,7 @@ export default function Home() {
           ))}
           <div ref={logEndRef} />
         </div>
-      </div>
+      </article>
 
       <footer className="footer">
         Designed for biannual product inventory updates | &copy; 2026 Yabetse
