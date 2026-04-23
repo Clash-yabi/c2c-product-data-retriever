@@ -133,12 +133,11 @@ p.subtitle {
 }
 
 .btn-outline {
-  background: transparent;
   border: 1px solid #30363d;
 }
 
 .btn-outline:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.784);
 }
 
 .footer {

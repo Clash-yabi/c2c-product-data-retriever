@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Rocket, Check, X, ChevronLeft, Download } from "lucide-react";
+import { Rocket, Check, X, ChevronLeft, Download, Pipette   } from "lucide-react";
 import { formattedDate } from "@helpers/dateConverter";
 
 export default function Home() {
@@ -180,7 +180,10 @@ export default function Home() {
               className="btn btn-outline"
               onClick={() => startExtraction(5)}
             >
-              <span>🧪</span> Run Test (20 products)
+              <span>
+                <Pipette />
+              </span>{" "}
+              Run Test (5 products)
             </button>
           </div>
         )}
