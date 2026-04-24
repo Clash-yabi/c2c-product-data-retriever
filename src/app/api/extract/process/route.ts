@@ -1,58 +1,56 @@
 import { NextResponse } from 'next/server';
-import puppeteer from 'puppeteer';
-import { getProductDetail, parseCertificate } from '@/lib/c2c-scraper';
-import { C2CProduct } from '@/types/products';
+import { getBrowser } from '@/lib/browser';
+import { getProductDetail } from '@/lib/c2c-scraper';
+import { parseCertificate } from '@/lib/pdf-parser';
+import { C2CProductSchema, C2CProduct } from '@/types/products';
 
 export async function POST(req: Request) {
-  let browser;
   try {
-    const { products } = await req.json();
+    const { products: rawProducts } = await req.json();
+    
+    // Validate input with Zod
+    const products: C2CProduct[] = rawProducts.map((p: any) => C2CProductSchema.parse(p));
 
-    console.log(`API Process: Processing ${products.length} products.`);
+    console.log(`API Process: Processing ${products.length} products in parallel.`);
 
-    browser = await puppeteer.launch({
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    const browser = await getBrowser();
 
-    const processed = [];
-
-    for (const p of products) {
+    // Define the processing logic for a single product
+    const processSingleProduct = async (p: C2CProduct) => {
       try {
-        console.log(`API Process: Extracting ${p.slug}`);
+        console.log(`API Process: Starting extraction for ${p.slug}`);
 
         // 1. Get data from the detail page
         const detail = await getProductDetail(browser, p.slug);
 
-        // 2. Parse the PDF for assessment bodies and effective date
+        // 2. Parse the PDF if available
         let pdfData = {
           leadBody: 'N/A',
           healthBody: 'N/A',
           effectiveDate: 'N/A',
           pdfExpirationDate: 'N/A',
         };
-        if (detail.pdfUrl) {
+        
+        if (detail.pdfUrl && detail.pdfUrl !== 'N/A') {
           pdfData = await parseCertificate(detail.pdfUrl);
         }
 
-        processed.push({
-          company: detail.productName !== 'N/A' ? detail.company : p.company,
-          productName: detail.productName !== 'N/A' ? detail.productName : p.productName,
+        return {
+          company: (detail.productName !== 'N/A' && detail.company) ? detail.company : p.company,
+          productName: (detail.productName !== 'N/A') ? detail.productName : p.productName,
           level: detail.level || 'N/A',
           standardVersion: detail.standardVersion || 'N/A',
           effectiveDate: pdfData.effectiveDate,
-          // Use detail page expiration date; fall back to PDF expiration date
           expirationDate: (detail.expirationDate && detail.expirationDate !== 'N/A')
             ? detail.expirationDate
             : pdfData.pdfExpirationDate,
           leadAssessmentBody: pdfData.leadBody,
           materialHealthAssessmentBody: pdfData.healthBody,
           pdfUrl: detail.pdfUrl || 'N/A',
-        });
-
+        };
       } catch (err: any) {
         console.error(`API Process: Error for ${p.slug}:`, err.message);
-        processed.push({
+        return {
           company: p.company || 'N/A',
           productName: p.productName || 'N/A',
           level: 'Error',
@@ -62,18 +60,19 @@ export async function POST(req: Request) {
           leadAssessmentBody: 'Error',
           materialHealthAssessmentBody: 'Error',
           pdfUrl: 'N/A',
-        });
+        };
       }
-    }
+    };
+
+    // Execute all products in the batch at the same time
+    // Since our batch size is 10, processing all 10 in parallel is generally safe.
+    const processed = await Promise.all(products.map(p => processSingleProduct(p)));
 
     return NextResponse.json({ processed });
   } catch (error: any) {
     console.error('Process error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   } finally {
-    if (browser) {
-      console.log('API Process: Closing browser.');
-      await browser.close();
-    }
+    console.log('API Process: Task complete.');
   }
 }

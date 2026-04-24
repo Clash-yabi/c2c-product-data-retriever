@@ -1,19 +1,18 @@
 import ExcelJS from "exceljs";
 import { NextResponse } from "next/server";
-import { saveTicket, getTicket, removeTicket } from "@/lib/export-store";
-import crypto from "crypto";
 
 export const runtime = "nodejs";
 
 /**
  * POST /api/extract/export
- * Creates a temporary download ticket and stores the Excel buffer in memory.
+ * Generates an Excel file from results and streams it directly back to the client.
+ * This is 100% stateless and works perfectly in Serverless environments like Vercel.
  */
 export async function POST(req: Request) {
   try {
     const { results } = await req.json();
 
-    console.log(`Export POST: Generating ticket for ${results?.length ?? 0} results.`);
+    console.log(`Export API: Generating Excel for ${results?.length ?? 0} results.`);
 
     if (!results || results.length === 0) {
       return NextResponse.json({ error: "No results provided" }, { status: 400 });
@@ -59,71 +58,26 @@ export async function POST(req: Request) {
       });
     });
 
-     workbook.clearThemes(); // Avoid potential corruption bugs in some versions of exceljs
+    // Write to buffer
+    workbook.clearThemes();
     const buffer = await workbook.xlsx.writeBuffer();
     const binaryData = Buffer.from(buffer as any);
 
-    console.log(`Export POST: Returning binary for ${results.length} results (${binaryData.length} bytes).`);
+    console.log(`Export API: Streaming ${binaryData.length} bytes back to client.`);
 
+    // Return the file directly in the response
     return new NextResponse(binaryData, {
       status: 200,
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": 'attachment; filename="C2C_Certified_Products.xlsx"',
+        "Content-Disposition": 'attachment; filename="C2C_Certified_Report.xlsx"',
         "Content-Length": binaryData.length.toString(),
-        "X-Content-Type-Options": "nosniff",
         "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0",
       },
     });
 
   } catch (error: any) {
-    console.error("Export POST Error:", error);
+    console.error("Export API Error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-/**
- * GET /api/extract/export
- * Consumes a download ticket and returns the binary stream.
- * browsers trust GET requests for downloads much more than POST responses.
- */
-export async function GET(req: Request) {
-  try {
-    const { searchParams } = new URL(req.url);
-    const token = searchParams.get("token");
-
-    if (!token) {
-      return new Response("Missing token", { status: 400 });
-    }
-
-    const ticket = getTicket(token);
-    if (!ticket) {
-      return new Response("Ticket expired or not found", { status: 404 });
-    }
-
-    console.log(`Export GET: Delivering binary for ticket ${token} (${ticket.buffer.length} bytes)`);
-
-    // Note: Ticket is NOT removed immediately. 
-    // It will be cleaned up by the 5-minute interval in export-store.ts.
-    // This handles cases where browsers "double-fetch" or use background threads.
-
-    return new Response(ticket.buffer as any, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": 'attachment; filename="C2C_Certified_Products.xlsx"',
-        "Content-Length": ticket.buffer.length.toString(),
-        "X-Content-Type-Options": "nosniff", // Security header
-        "Cache-Control": "no-cache, no-store, must-revalidate",
-        "Pragma": "no-cache",
-        "Expires": "0",
-      },
-    });
-
-  } catch (error: any) {
-    console.error("Export GET Error:", error);
-    return new Response("Internal Server Error", { status: 500 });
   }
 }

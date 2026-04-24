@@ -147,6 +147,10 @@ p.subtitle {
   font-size: 0.8rem;
 }
 
+.footer-version {
+opacity: 0.7;
+}
+
 .log-container {
   margin-top: 2rem;
   background: #0d1117;

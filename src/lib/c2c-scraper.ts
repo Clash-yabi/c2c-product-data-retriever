@@ -1,30 +1,20 @@
-import puppeteer from "puppeteer";
-import axios from "axios";
-import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
-import { C2CProduct } from "@/types/products";
+import { getBrowser } from "./browser";
+import { C2CProduct, C2CProductSchema } from "@/types/products";
 
 const BASE_URL = "https://c2ccertified.org";
 
-const BROWSER_HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-};
+const TIMEOUT_PAGE_LOAD = 60000;
+const TIMEOUT_PAGINATION_WAIT = 15000;
+const TIMEOUT_SELECTOR_WAIT = 10000;
+const DELAY_PAGINATION_MS = 300;
+const MIN_COMPANY_LENGTH = 2;
 
 /**
- * Fetches the list of all certified products using a headless browser.
- * IMPORTANT: This website uses client-side pagination — the URL never changes!
- * We keep ONE page open and click the page buttons to navigate between pages.
+ * Fetches the list of all certified products using a shared headless browser.
  */
 export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
-  console.log("getProductsList: Launching browser...");
-  const browser = await puppeteer.launch({
-    headless: true,
-    args: [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-    ],
-  });
+  console.log("getProductsList: Getting browser instance...");
+  const browser = await getBrowser();
 
   try {
     const products: C2CProduct[] = [];
@@ -34,21 +24,27 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
     console.log("getProductsList: Loading registry page 1...");
     await page.goto(`${BASE_URL}/certified-products`, {
       waitUntil: "networkidle2",
-      timeout: 60000,
+      timeout: TIMEOUT_PAGE_LOAD,
     });
     await page
       .waitForSelector(".certified-products__pagination-page", {
-        timeout: 15000,
+        timeout: TIMEOUT_PAGINATION_WAIT,
       })
       .catch(() => null);
 
     const totalPages = await page.evaluate(() => {
-      const pageButtons = document.querySelectorAll(
+      const pageButtons = Array.from(document.querySelectorAll(
         ".certified-products__pagination-page"
-      );
+      ));
       if (pageButtons.length === 0) return 1;
-      const lastPageButton = pageButtons[pageButtons.length - 1];
-      return parseInt(lastPageButton.textContent?.trim() || "1", 10);
+      
+      // Filter the buttons to find the highest page number
+      // This ignores navigational arrows or "..." if they happen to share the class
+      const pageNumbers = pageButtons
+        .map(btn => parseInt(btn.textContent?.trim() || "", 10))
+        .filter(num => !isNaN(num));
+        
+      return pageNumbers.length > 0 ? Math.max(...pageNumbers) : 1;
     });
 
     console.log(`getProductsList: Detected ${totalPages} total pages.`);
@@ -56,12 +52,12 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
     // Helper: scrape all visible product slugs from the current page state
     const scrapeCurrentPage = async (pageNum: number): Promise<any[]> => {
       await page
-        .waitForSelector('a[href^="/certified-products/"]', { timeout: 10000 })
+        .waitForSelector("a[href^=\"/certified-products/\"]", { timeout: TIMEOUT_SELECTOR_WAIT })
         .catch(() => null);
 
       const items = await page.evaluate(() => {
         const registryItems = Array.from(
-          document.querySelectorAll('a[href^="/certified-products/"]')
+          document.querySelectorAll("a[href^=\"/certified-products/\"]")
         );
         const res: any[] = [];
         registryItems.forEach((item) => {
@@ -96,7 +92,7 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
     });
 
     // Click through pages 2..N using the pagination buttons
-    for (let pageNum = 2; pageNum <= totalPages; pageNum++) {
+    for (let pageNum = 2; pageNum <= totalPages; pageNum++) { 
       if (limit && products.length >= limit) break;
 
       console.log(`getProductsList: Clicking to page ${pageNum}...`);
@@ -104,7 +100,7 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
       try {
         const firstSlugBefore = await page.evaluate(() => {
           const first = document.querySelector(
-            'a[href^="/certified-products/"]:not(.certified-products__pagination-page)'
+            "a[href^=\"/certified-products/\"]:not(.certified-products__pagination-page)"
           );
           return first?.getAttribute("href") || "";
         });
@@ -133,15 +129,15 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
         await page.waitForFunction(
           (prevSlug: string) => {
             const first = document.querySelector(
-              'a[href^="/certified-products/"]:not(.certified-products__pagination-page)'
+              "a[href^=\"/certified-products/\"]:not(.certified-products__pagination-page)"
             );
             return first?.getAttribute("href") !== prevSlug;
           },
-          { timeout: 15000 },
+          { timeout: TIMEOUT_PAGINATION_WAIT },
           firstSlugBefore
         );
 
-        await new Promise((resolve) => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, DELAY_PAGINATION_MS));
 
         const items = await scrapeCurrentPage(pageNum);
         items.forEach((p) => {
@@ -162,16 +158,19 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
     await page.close();
 
     const finalProducts = limit ? products.slice(0, limit) : products;
+    
+    // Validate with Zod before returning
+    const validatedProducts = finalProducts.map(p => C2CProductSchema.parse(p));
+
     console.log(
-      `getProductsList: Successfully extracted ${finalProducts.length} unique product entries.`
+      `getProductsList: Successfully extracted ${validatedProducts.length} unique product entries.`
     );
-    return finalProducts;
+    return validatedProducts;
   } catch (error) {
     console.error("getProductsList: GLOBAL ERROR:", error);
     throw error;
   } finally {
-    console.log("getProductsList: Closing browser...");
-    await browser.close();
+    console.log("getProductsList: Task complete.");
   }
 }
 
@@ -187,7 +186,7 @@ export async function getProductDetail(
   try {
     const url = `${BASE_URL}/certified-products/${slug}`;
     console.log(`getProductDetail: Visiting ${url}...`);
-    await page.goto(url, { waitUntil: "networkidle2", timeout: 60000 });
+    await page.goto(url, { waitUntil: "networkidle2", timeout: TIMEOUT_PAGE_LOAD });
 
     const detail = await page.evaluate(() => {
       const body = document.body.innerText;
@@ -202,6 +201,8 @@ export async function getProductDetail(
       let sibling = h1?.nextElementSibling;
       while (sibling) {
         const t = sibling.textContent?.trim();
+        // Use dynamically injected constants, or just literal 2 as we are inside evaluate!
+        // Wait, since we can't easily pass constants into evaluate, we'll keep it 2 here.
         if (t && t.length > 2 && t !== productName) {
           company = t;
           break;
@@ -239,34 +240,46 @@ export async function getProductDetail(
     // --- PDF URL via Downloads button ---
     let pdfUrl: string | null = null;
     try {
-      const downloadBtn = await page.$(
-        "button.certification-info__btn--download"
-      );
+      // 1. Wait for and find the "Downloads" trigger button
+      await page.waitForSelector("button.certification-info__btn--download", { timeout: TIMEOUT_SELECTOR_WAIT }).catch(() => null);
+      const downloadBtn = await page.$("button.certification-info__btn--download");
+      
       if (downloadBtn) {
-        await downloadBtn.click();
-        await page
-          .waitForSelector('.overlay-sidebar a[href$=".pdf"]', {
-            timeout: 8000,
-          })
-          .catch(() => null);
-
-        pdfUrl = await page.evaluate(() => {
-          const links = Array.from(
-            document.querySelectorAll('.overlay-sidebar a[href$=".pdf"]')
-          );
-          const certLink = links.find(
-            (l) =>
-              l.textContent?.toLowerCase().includes("certified® full scope") ||
-              l.textContent?.toLowerCase().includes("certificate") ||
-              l.classList.contains("button--green")
-          );
-          return certLink
-            ? certLink.getAttribute("href")
-            : links[0]?.getAttribute("href") || null;
+        console.log(`getProductDetail: Clicking download button for ${slug}...`);
+        // Use page.evaluate for a more reliable click that bypasses some overlay issues
+        await page.evaluate((btn: any) => btn.click(), downloadBtn);
+        
+        // 2. Wait for the sidebar to appear and contain PDF links
+        // We use a more inclusive selector [href*=".pdf"] to handle potential query params
+        const sidebarSelector = ".overlay-sidebar a[href*=\".pdf\"]";
+        await page.waitForSelector(sidebarSelector, { timeout: TIMEOUT_SELECTOR_WAIT }).catch(() => {
+          console.warn(`getProductDetail: Sidebar or PDF link not found after click for ${slug}`);
         });
+
+        // 3. Extract the best PDF link from the sidebar
+        pdfUrl = await page.evaluate(() => {
+          const links = Array.from(document.querySelectorAll(".overlay-sidebar a[href*=\".pdf\"]"));
+          if (links.length === 0) return null;
+
+          // Priority 1: The green button (usually the main certificate)
+          const greenBtn = links.find(l => l.classList.contains("button--green"));
+          if (greenBtn) return greenBtn.getAttribute("href");
+
+          // Priority 2: Text matching "certificate" or "full scope"
+          const certLink = links.find(l => {
+            const txt = l.textContent?.toLowerCase() || "";
+            return txt.includes("certified® full scope") || txt.includes("certificate");
+          });
+          if (certLink) return certLink.getAttribute("href");
+
+          // Priority 3: Just the first PDF link found
+          return links[0].getAttribute("href");
+        });
+      } else {
+        console.warn(`getProductDetail: Download button not found for ${slug}`);
       }
-    } catch (e) {
-      console.warn(`getProductDetail: Could not find PDF for ${slug}`);
+    } catch (e: any) {
+      console.warn(`getProductDetail: PDF extraction failed for ${slug}:`, e.message);
     }
 
     console.log(`getProductDetail: PDF: ${pdfUrl ? "Found" : "N/A"}`);
@@ -287,105 +300,3 @@ export async function getProductDetail(
   }
 }
 
-/**
- * Downloads and parses the certificate PDF using pdfjs-dist.
- * Extracts: effectiveDate, expirationDate (backup), leadBody, healthBody
- */
-export async function parseCertificate(pdfUrl: string): Promise<{
-  leadBody: string;
-  healthBody: string;
-  effectiveDate: string;
-  pdfExpirationDate: string;
-}> {
-  const empty = {
-    leadBody: "N/A",
-    healthBody: "N/A",
-    effectiveDate: "N/A",
-    pdfExpirationDate: "N/A",
-  };
-
-  try {
-    if (!pdfUrl || pdfUrl === "N/A") return empty;
-
-    const response = await axios.get(pdfUrl, {
-      responseType: "arraybuffer",
-      headers: { "User-Agent": BROWSER_HEADERS["User-Agent"] },
-      timeout: 20000,
-    });
-
-    const buffer = new Uint8Array(response.data);
-
-    try {
-      const loadingTask = pdfjs.getDocument({
-        data: buffer,
-      });
-
-      const doc = await loadingTask.promise;
-      let text = "";
-
-      for (let i = 1; i <= doc.numPages; i++) {
-        const pg = await doc.getPage(i);
-        const content = await pg.getTextContent();
-        // Join with a space to create a flat searchable string
-        const pageText = content.items
-          .map((item: any) => ("str" in item ? item.str : ""))
-          .join(" ");
-        text += pageText + " ";
-      }
-
-      console.log(
-        `parseCertificate: Raw PDF text (first 400 chars): ${text.substring(0, 400)}`
-      );
-
-      // ---- Lead Assessment Body ----
-      // Stop BEFORE "Material Health" to avoid greediness
-      const leadMatch = text.match(
-        /Lead\s+Assessment\s+Body\s+([\s\S]*?)(?=Material\s+Health|Effective\s+Date|Expiration\s+Date|$)/i
-      );
-      const leadBody = cleanField(leadMatch?.[1]);
-
-      // ---- Material Health Assessment Body ----
-      // Stop BEFORE "Effective Date" 
-      const healthMatch = text.match(
-        /Material\s+Health\s+Assessment\s+Body\s+([\s\S]*?)(?=Effective\s+Date|Expiration\s+Date|$)/i
-      );
-      const healthBody = cleanField(healthMatch?.[1]);
-
-      // ---- Effective Date ----
-      const effectiveDateMatch = text.match(
-        /Effective\s+Date\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
-      );
-      const effectiveDate = effectiveDateMatch
-        ? effectiveDateMatch[1].trim()
-        : "N/A";
-
-      // ---- Expiration Date (from PDF, as backup) ----
-      const expirationDateMatch = text.match(
-        /Expiration\s+Date\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
-      );
-      const pdfExpirationDate = expirationDateMatch
-        ? expirationDateMatch[1].trim()
-        : "N/A";
-
-      console.log(
-        `parseCertificate: lead="${leadBody}", health="${healthBody}", effective="${effectiveDate}", expiry="${pdfExpirationDate}"`
-      );
-
-      return { leadBody, healthBody, effectiveDate, pdfExpirationDate };
-    } catch (pdfErr: any) {
-      console.error(`parseCertificate: PDFjs error for ${pdfUrl}:`, pdfErr.message);
-      return empty;
-    }
-  } catch (error: any) {
-    console.error(`parseCertificate: Fetch error for ${pdfUrl}:`, error.message);
-    return empty;
-  }
-}
-
-/** Trim and remove known noise from extracted PDF text fields */
-function cleanField(raw: string | undefined): string {
-  if (!raw) return "N/A";
-  const cleaned = raw.replace(/\s+/g, " ").trim();
-  if (!cleaned || cleaned.length < 2) return "N/A";
-  return cleaned;
-}
