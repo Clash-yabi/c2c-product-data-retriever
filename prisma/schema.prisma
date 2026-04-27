@@ -1,0 +1,43 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model ScrapeJob {
+  id             String    @id @default(cuid())
+  status         String    @default("running") // 'running', 'completed', 'failed'
+  totalItems     Int       @default(0)
+  processedItems Int       @default(0)
+  createdAt      String
+  updatedAt      String
+  products       Product[]
+}
+
+model Product {
+  id                           String    @id @default(cuid())
+  jobId                        String
+  job                          ScrapeJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  status                       String    @default("pending") // 'pending', 'success', 'error'
+  slug                         String
+  productName                  String?
+  company                      String?
+  level                        String?
+  standardVersion              String?
+  effectiveDate                String?
+  expirationDate               String?
+  leadAssessmentBody           String?
+  materialHealthAssessmentBody String?
+  pdfUrl                       String?
+  errorReason                  String?
+  createdAt                    String
+  updatedAt                    String
+
+  @@unique([jobId, slug])
+}

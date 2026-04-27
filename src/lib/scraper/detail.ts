@@ -21,55 +21,95 @@ export async function getProductDetail(
 
     const detail = await page.evaluate(() => {
       const body = document.body.innerText;
+      const productName = document.querySelector("h1")?.textContent?.trim() || "N/A";
 
-      // --- Product Name ---
-      const productName =
-        document.querySelector("h1")?.textContent?.trim() || "N/A";
-
-      // --- Company: first non-empty sibling of h1, usually uppercase ---
+      // --- 1. Company Name (Semantic -> Sibling Fallback) ---
       let company = "N/A";
-      const h1 = document.querySelector("h1");
-      let sibling = h1?.nextElementSibling;
-      while (sibling) {
-        const t = sibling.textContent?.trim();
-        // Use dynamically injected constants, or just literal 2 as we are inside evaluate!
-        // Wait, since we can't easily pass constants into evaluate, we'll keep it 2 here.
-        if (t && t.length > 2 && t !== productName) {
-          company = t;
-          break;
+      const companyEl = document.querySelector(".product-detail__company");
+      if (companyEl && companyEl.textContent?.trim()) {
+        company = companyEl.textContent.trim();
+      } else {
+        // Fallback: first non-empty sibling of h1
+        const h1 = document.querySelector("h1");
+        let sibling = h1?.nextElementSibling;
+        while (sibling) {
+          const t = sibling.textContent?.trim();
+          if (t && t.length > 2 && t !== productName) {
+            company = t;
+            break;
+          }
+          sibling = sibling.nextElementSibling;
         }
-        sibling = sibling.nextElementSibling;
       }
 
-      // --- Level & Standard Version from "Bronze, version 4.0" pattern ---
+      // --- 2. Level & Standard Version (Structured -> Regex Fallback) ---
       let level = "N/A";
       let standardVersion = "N/A";
-      const lvlMatch = body.match(
-        /(Bronze|Silver|Gold|Platinum),\s*version\s+([\d.]+)/i
-      );
-      if (lvlMatch) {
-        level = lvlMatch[1];
-        standardVersion = lvlMatch[2];
+
+      // Attempt Structured Extraction
+      const certInfoBlocks = Array.from(document.querySelectorAll(".certification-info"));
+      const levelBlock = certInfoBlocks.find(b => b.textContent?.toLowerCase().includes("certification level"));
+      const versionBlock = certInfoBlocks.find(b => b.textContent?.toLowerCase().includes("standard version"));
+
+      if (levelBlock) {
+        level = levelBlock.querySelector(".certification-info__value")?.textContent?.trim() || "N/A";
+      }
+      if (versionBlock) {
+        standardVersion = versionBlock.querySelector(".certification-info__value")?.textContent?.trim() || "N/A";
       }
 
-      // --- Expiration Date: look for "Valid Until" label ---
+      // Fallback: Pattern Match in Body
+      if (level === "N/A" || standardVersion === "N/A") {
+        const lvlMatch = body.match(/(Bronze|Silver|Gold|Platinum),\s*version\s+([\d.]+)/i);
+        if (lvlMatch) {
+          if (level === "N/A") level = lvlMatch[1];
+          if (standardVersion === "N/A") standardVersion = lvlMatch[2];
+        }
+      }
+
+      // --- 3. Dates Extraction (Standard patterns) ---
+      let effectiveDate = "N/A";
       let expirationDate = "N/A";
-      const validUntilMatch = body.match(
-        /Valid\s+Until\s*\n\s*([A-Za-z]+ \d{1,2},? \d{4}|\d{1,2} [A-Za-z]+ \d{4})/i
-      );
-      if (validUntilMatch) {
-        expirationDate = validUntilMatch[1].trim();
+
+      const effMatch = body.match(/Effective\s*Date:\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/i);
+      const expMatch = body.match(/Expiration\s*Date:\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/i);
+
+      if (effMatch) effectiveDate = effMatch[1];
+      if (expMatch) expirationDate = expMatch[1];
+
+      // --- 4. PDF Link (Direct Selector -> URL Pattern Fallback) ---
+      let pdfUrl = "N/A";
+      const pdfBtn = document.querySelector("a[href*='certifications'], button[onclick*='certifications']");
+      if (pdfBtn) {
+        if (pdfBtn.tagName === "A") {
+          pdfUrl = (pdfBtn as HTMLAnchorElement).href;
+        }
       }
 
-      return { productName, company, level, standardVersion, expirationDate };
-    });
+      // Final Fallback for PDF: scan all links
+      if (pdfUrl === "N/A") {
+        const allLinks = Array.from(document.querySelectorAll("a"));
+        const certLink = allLinks.find(a => a.href.includes("certifications") && a.href.endsWith(".pdf"));
+        if (certLink) pdfUrl = certLink.href;
+      }
+
+      return {
+        productName,
+        company,
+        level,
+        standardVersion,
+        effectiveDate,
+        expirationDate,
+        pdfUrl,
+      };
+    }); 
 
     console.log(
       `getProductDetail: name="${detail.productName}", company="${detail.company}", level="${detail.level}", ver="${detail.standardVersion}", expires="${detail.expirationDate}"`
     );
 
     // --- PDF URL via Downloads button ---
-    let pdfUrl: string | null = null;
+    let pdfUrl: string | null = detail.pdfUrl !== "N/A" ? detail.pdfUrl : null;
     try {
       // 1. Wait for and find the "Downloads" trigger button
       await page.waitForSelector("button.certification-info__btn--download", { timeout: TIMEOUT_SELECTOR_WAIT }).catch(() => null);

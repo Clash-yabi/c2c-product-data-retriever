@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { formattedDate } from "@/utils/dateConverter";
 
 export interface Log {
@@ -9,18 +9,22 @@ export interface Log {
 }
 
 export function useProductExtractor() {
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [progress, setProgress] = useState(0);
   const [total, setTotal] = useState(0);
   const [currentProduct, setCurrentProduct] = useState("");
   const [logs, setLogs] = useState<Log[]>([]);
-  const [results, setResults] = useState<any[]>([]);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [isCompleted, setIsCompleted] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  const addLog = (msg: string, type: string = "info") => {
+  const addLog = useCallback((msg: string, type: string = "info") => {
     console.log(`[ExtrLog] ${type}: ${msg}`);
     setLogs((prev) => [...prev, { msg, type }]);
-  };
+  }, []);
 
   useEffect(() => {
     if (logEndRef.current) {
@@ -28,8 +32,75 @@ export function useProductExtractor() {
     }
   }, [logs]);
 
+  const startPolling = useCallback((pollJobId: string) => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+
+    const poll = async () => {
+      try {
+        const statusRes = await fetch(`/api/extract/status?jobId=${pollJobId}`);
+        
+        // If the server hasn't created the job yet (404), stay in "Reconnecting" mode and try again later
+        if (!statusRes.ok) {
+           return;
+        }
+
+        const statusData = await statusRes.json();
+        setProgress(statusData.processedItems);
+        setTotal(statusData.totalItems);
+        
+        if (statusData.status === "running") {
+          setCurrentProduct(`Extracting... ${statusData.processedItems} / ${statusData.totalItems}`);
+          setIsExtracting(true);
+          setIsCompleted(false);
+          setIsReconnecting(false); // Success! We found the running job
+        }
+
+        if (statusData.status === "completed" || statusData.status === "failed") {
+          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+          setIsExtracting(false);
+          setCurrentProduct("");
+          setIsReconnecting(false); // Success! We found the finished job
+          
+          if (statusData.status === "completed") {
+              setIsCompleted(true);
+              addLog("Extraction complete! Click below to download the Excel report.", "success");
+          } else {
+              addLog("Job failed on the server. Check logs.", "error");
+          }
+        }
+      } catch (err) {
+          console.error("Polling error:", err);
+      }
+    };
+
+    poll();
+    pollIntervalRef.current = setInterval(poll, 3000);
+  }, [addLog]);
+
+  // PHASE 4: HYDRATION SAFE MOUNT
+  useEffect(() => {
+    setHasHydrated(true);
+    const savedJobId = localStorage.getItem("c2c_jobId");
+    if (savedJobId) {
+      setJobId(savedJobId);
+      setIsReconnecting(true);
+      setIsExtracting(true); // Assume extracting until proven otherwise
+      addLog(`System: Reconnecting to background job ${savedJobId}...`, "info");
+      startPolling(savedJobId);
+    }
+
+    return () => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    };
+  }, [startPolling, addLog]);
+
   const clearResults = () => {
-    setResults([]);
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    localStorage.removeItem("c2c_jobId");
+    setJobId(null);
+    setIsCompleted(false);
+    setIsExtracting(false);
+    setIsReconnecting(false);
     setLogs([]);
     setProgress(0);
     setTotal(0);
@@ -37,15 +108,11 @@ export function useProductExtractor() {
   };
 
   const handleDownload = async () => {
-    if (results.length === 0) return;
+    if (!jobId) return;
 
     try {
-      addLog("Generating file... (v2.3)", "info");
-      const res = await fetch(`/api/extract/export?t=${Date.now()}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ results }),
-      });
+      addLog("Generating Excel file from database...", "info");
+      const res = await fetch(`/api/extract/export?jobId=${jobId}&t=${Date.now()}`);
 
       if (!res.ok) {
         const errorText = await res.text();
@@ -83,85 +150,60 @@ export function useProductExtractor() {
   };
 
   const startExtraction = async (limit?: number) => {
+    if (isReconnecting || isExtracting) return; 
+
+    // OPTIMISTIC RELIABILITY: Generate ID before the request
+    const newJobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    
     setIsExtracting(true);
     setProgress(0);
     setLogs([]);
     setTotal(0);
-    setResults([]);
+    setJobId(newJobId);
+    localStorage.setItem("c2c_jobId", newJobId); // SAVE IMMEDIATELY
+    setIsCompleted(false);
+
     addLog(
       limit
         ? `Starting Test Extraction (${limit} products)...`
-        : "Starting Full C2C Data Extraction...",
+        : "Starting Full C2C Data Extraction in Background...",
       "info",
     );
 
     try {
-      setCurrentProduct("Browsing registry pages...");
-      addLog("Launching browser to detect registry state...", "info");
+      setCurrentProduct("Initializing backend job...");
 
-      const listRes = await fetch("/api/extract/start", {
+      const startRes = await fetch("/api/extract/start", {
         method: "POST",
-        body: JSON.stringify({ limit }),
+        body: JSON.stringify({ limit, jobId: newJobId }),
         headers: { "Content-Type": "application/json" },
       });
-      const { products } = await listRes.json();
-
-      if (!products || products.length === 0) {
-        throw new Error("No products found in registry.");
+      
+      if (!startRes.ok) {
+         throw new Error("Failed to start job on the server");
       }
 
-      setTotal(products.length);
-      addLog(
-        `Found ${products.length} products. Beginning detailed scan.`,
-        "success",
-      );
+      const startData = await startRes.json();
+      setTotal(startData.totalExpected);
+      addLog(`Job ${newJobId} confirmed by server. Found ${startData.totalExpected} products.`, "success");
 
-      const batchSize = 10;
-      let currentResults = [];
+      startPolling(newJobId);
 
-      for (let i = 0; i < products.length; i += batchSize) {
-        const chunk = products.slice(i, i + batchSize);
-        setCurrentProduct(
-          `Processing batch ${Math.floor(i / batchSize) + 1}...`,
-        );
-
-        const processRes = await fetch("/api/extract/process", {
-          method: "POST",
-          body: JSON.stringify({ products: chunk }),
-          headers: { "Content-Type": "application/json" },
-        });
-
-        const { processed } = await processRes.json();
-        currentResults.push(...processed);
-
-        setProgress(Math.min(i + batchSize, products.length));
-        addLog(
-          `Processed ${Math.min(i + batchSize, products.length)} / ${products.length} products.`,
-          "info",
-        );
-      }
-
-      setResults(currentResults);
-      addLog(
-        "Extraction complete! Click below to download the Excel report.",
-        "success",
-      );
     } catch (err) {
       console.error(err);
-      addLog("An error occurred during extraction. Check console.", "error");
-    } finally {
+      addLog("An error occurred during startup. Check console.", "error");
       setIsExtracting(false);
       setCurrentProduct("");
     }
   };
 
   return {
-    isExtracting,
+    isExtracting: isExtracting || isReconnecting,
     progress,
     total,
-    currentProduct,
+    currentProduct: isReconnecting ? "Reconnecting to server..." : currentProduct,
     logs,
-    results,
+    results: isCompleted ? ["ready"] : [], 
     logEndRef,
     startExtraction,
     handleDownload,

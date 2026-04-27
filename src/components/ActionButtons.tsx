@@ -21,7 +21,7 @@ export function ActionButtons({ onStartFull, onStartTest, disabled }: ActionButt
       </button>
       <button
         className="btn btn-outline"
-        onClick={() => onStartTest(5)}
+        onClick={() => onStartTest(10)}
         disabled={disabled}
       >
         <span>

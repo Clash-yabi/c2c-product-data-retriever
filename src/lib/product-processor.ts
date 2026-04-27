@@ -2,6 +2,7 @@ import { getBrowser } from "./browser";
 import { getProductDetail } from "./c2c-scraper";
 import { parseCertificate } from "./pdf-parser";
 import { C2CProduct } from "@/types/products";
+import pLimit from "p-limit";
 
 const DEFAULT_NA = "N/A";
 const DEFAULT_ERROR = "Error";
@@ -59,5 +60,7 @@ export async function processProductBatch(products: C2CProduct[]): Promise<C2CPr
     }
   };
 
-  return Promise.all(products.map((p) => processSingleProduct(p)));
+  // Strictly limit concurrent tabs to 3 to prevent OOM errors on Railway
+  const limit = pLimit(3);
+  return Promise.all(products.map((p) => limit(() => processSingleProduct(p))));
 }
