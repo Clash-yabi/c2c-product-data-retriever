@@ -10,6 +10,7 @@ import { useProductExtractor } from "@/hooks/useProductExtractor";
 
 export default function Home() {
   const {
+    hasHydrated,
     isExtracting,
     progress,
     total,
@@ -22,35 +23,49 @@ export default function Home() {
     clearResults,
   } = useProductExtractor();
 
-  const VERSION = "v2.3";
+  const VERSION = "v2.4";
 
   return (
     <main className="container">
       <article className="card">
         <Header version={VERSION} />
 
-        {!isExtracting && results.length === 0 && (
-          <ActionButtons
-            onStartFull={() => startExtraction()}
-            onStartTest={(limit) => startExtraction(limit)}
-            disabled={isExtracting}
-          />
-        )}
+        {/* 
+          FLICKER FIX: 
+          If the app hasn't "woken up" (hydrated) yet, we show nothing 
+          to prevent the "Start" button from flashing before we reconnect 
+          to a background job.
+        */}
+        {!hasHydrated ? (
+           <div style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <p style={{ opacity: 0.5, fontSize: '0.9rem' }}>Initialising...</p>
+           </div>
+        ) : (
+          <>
+            {!isExtracting && results.length === 0 && (
+              <ActionButtons
+                onStartFull={() => startExtraction()}
+                onStartTest={(limit) => startExtraction(limit)}
+                disabled={isExtracting}
+              />
+            )}
 
-        {isExtracting && (
-          <ProgressBar
-            currentProduct={currentProduct}
-            progress={progress}
-            total={total}
-          />
-        )}
+            {isExtracting && (
+              <ProgressBar
+                currentProduct={currentProduct}
+                progress={progress}
+                total={total}
+              />
+            )}
 
-        {results.length > 0 && !isExtracting && (
-          <DownloadSection
-            onDownload={handleDownload}
-            onClear={clearResults}
-            disabled={isExtracting}
-          />
+            {results.length > 0 && !isExtracting && (
+              <DownloadSection
+                onDownload={handleDownload}
+                onClear={clearResults}
+                disabled={isExtracting}
+              />
+            )}
+          </>
         )}
 
         <LogViewer logs={logs} logEndRef={logEndRef} />

@@ -20,6 +20,7 @@ export function useProductExtractor() {
   const [isCompleted, setIsCompleted] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const retryCountRef = useRef(0);
 
   const addLog = useCallback((msg: string, type: string = "info") => {
     console.log(`[ExtrLog] ${type}: ${msg}`);
@@ -32,6 +33,19 @@ export function useProductExtractor() {
     }
   }, [logs]);
 
+  const clearResults = useCallback(() => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    localStorage.removeItem("c2c_jobId");
+    setJobId(null);
+    setIsCompleted(false);
+    setIsExtracting(false);
+    setIsReconnecting(false);
+    setLogs([]);
+    setProgress(0);
+    setTotal(0);
+    setCurrentProduct("");
+  }, []);
+
   const startPolling = useCallback((pollJobId: string) => {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
@@ -39,10 +53,19 @@ export function useProductExtractor() {
       try {
         const statusRes = await fetch(`/api/extract/status?jobId=${pollJobId}`);
         
-        // If the server hasn't created the job yet (404), stay in "Reconnecting" mode and try again later
+        // SELF-HEALING: If we get 404 multiple times, the job is likely deleted/stale
         if (!statusRes.ok) {
+           retryCountRef.current += 1;
+           if (retryCountRef.current > 3) {
+             console.warn("Self-Healing: Detected stale Job ID. Clearing state.");
+             addLog("Warning: Previous job not found on server. Clearing stale data.", "warning");
+             clearResults();
+           }
            return;
         }
+
+        // Reset retry count on any successful response
+        retryCountRef.current = 0;
 
         const statusData = await statusRes.json();
         setProgress(statusData.processedItems);
@@ -52,14 +75,14 @@ export function useProductExtractor() {
           setCurrentProduct(`Extracting... ${statusData.processedItems} / ${statusData.totalItems}`);
           setIsExtracting(true);
           setIsCompleted(false);
-          setIsReconnecting(false); // Success! We found the running job
+          setIsReconnecting(false); 
         }
 
         if (statusData.status === "completed" || statusData.status === "failed") {
           if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
           setIsExtracting(false);
           setCurrentProduct("");
-          setIsReconnecting(false); // Success! We found the finished job
+          setIsReconnecting(false); 
           
           if (statusData.status === "completed") {
               setIsCompleted(true);
@@ -75,7 +98,7 @@ export function useProductExtractor() {
 
     poll();
     pollIntervalRef.current = setInterval(poll, 3000);
-  }, [addLog]);
+  }, [addLog, clearResults]);
 
   // PHASE 4: HYDRATION SAFE MOUNT
   useEffect(() => {
@@ -93,19 +116,6 @@ export function useProductExtractor() {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
   }, [startPolling, addLog]);
-
-  const clearResults = () => {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-    localStorage.removeItem("c2c_jobId");
-    setJobId(null);
-    setIsCompleted(false);
-    setIsExtracting(false);
-    setIsReconnecting(false);
-    setLogs([]);
-    setProgress(0);
-    setTotal(0);
-    setCurrentProduct("");
-  };
 
   const handleDownload = async () => {
     if (!jobId) return;
@@ -152,7 +162,6 @@ export function useProductExtractor() {
   const startExtraction = async (limit?: number) => {
     if (isReconnecting || isExtracting) return; 
 
-    // OPTIMISTIC RELIABILITY: Generate ID before the request
     const newJobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
     
     setIsExtracting(true);
@@ -160,7 +169,7 @@ export function useProductExtractor() {
     setLogs([]);
     setTotal(0);
     setJobId(newJobId);
-    localStorage.setItem("c2c_jobId", newJobId); // SAVE IMMEDIATELY
+    localStorage.setItem("c2c_jobId", newJobId);
     setIsCompleted(false);
 
     addLog(
@@ -198,6 +207,7 @@ export function useProductExtractor() {
   };
 
   return {
+    hasHydrated,
     isExtracting: isExtracting || isReconnecting,
     progress,
     total,
