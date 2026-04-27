@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getBrowser } from '@/lib/browser';
-import { getProductDetail } from '@/lib/c2c-scraper';
-import { parseCertificate } from '@/lib/pdf-parser';
+import { getBrowser } from '@lib/browser';
+import { getProductDetail } from '@lib/c2c-scraper';
+import { parseCertificate } from '@lib/pdf-parser';
 import { C2CProductSchema, C2CProduct } from '@/types/products';
 
 export async function POST(req: Request) {

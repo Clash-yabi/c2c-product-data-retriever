@@ -1,11 +1,12 @@
 "use client";
 
-import { useProductExtractor } from "../hooks/useProductExtractor";
-import { Header } from "../components/Header";
-import { ActionButtons } from "../components/ActionButtons";
-import { ProgressBar } from "../components/ProgressBar";
-import { LogViewer } from "../components/LogViewer";
-import { DownloadSection } from "../components/DownloadSection";
+
+import { Header } from "@components/Header";
+import { ActionButtons } from "@components/ActionButtons";
+import { ProgressBar } from "@components/ProgressBar";
+import { LogViewer } from "@components/LogViewer";
+import { DownloadSection } from "@components/DownloadSection";
+import { useProductExtractor } from "@hooks/useProductExtractor";
 
 export default function Home() {
   const {

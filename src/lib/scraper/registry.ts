@@ -1,4 +1,4 @@
-import { getBrowser } from "@/lib/browser";
+import { getBrowser } from "@lib/browser";
 import { C2CProduct, C2CProductSchema } from "@/types/products";
 import { 
   BASE_URL, 
