@@ -43,3 +43,14 @@ next-env.d.ts
 
 scratch
 /src/generated/prisma
+
+# Database
+*.db
+*.db-journal
+prisma/*.db
+prisma/*.db-journal
+
+# Logs
+tsc-errors.txt
+post_refactor_audit.md
+implementation_plan.md
