@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { generateC2CExcelReport } from "@lib/excel";
+import { generateC2CExcelReport } from "@/lib/excel";
 
 export const runtime = "nodejs";
 

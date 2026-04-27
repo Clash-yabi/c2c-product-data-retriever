@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { C2CProductSchema, C2CProduct } from "@/types/products";
-import { processProductBatch } from "@lib/product-processor";
+import { processProductBatch } from "@/lib/product-processor";
 
 export async function POST(req: Request) {
   try {

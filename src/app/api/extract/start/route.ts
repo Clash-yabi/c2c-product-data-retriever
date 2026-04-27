@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getProductsList } from '@lib/c2c-scraper';
+import { getProductsList } from '@/lib/c2c-scraper';
 
 export async function POST(req: Request) {
   try {

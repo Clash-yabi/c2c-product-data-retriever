@@ -1,9 +1,9 @@
-import { getBrowser } from "@lib/browser";
+import { getBrowser } from "@/lib/browser";
 import { C2CProduct, C2CProductSchema } from "@/types/products";
-import { 
-  BASE_URL, 
-  TIMEOUT_PAGE_LOAD, 
-  TIMEOUT_PAGINATION_WAIT, 
+import {
+  BASE_URL,
+  TIMEOUT_PAGE_LOAD,
+  TIMEOUT_PAGINATION_WAIT,
   TIMEOUT_SELECTOR_WAIT, 
   DELAY_PAGINATION_MS 
 } from "./constants";
