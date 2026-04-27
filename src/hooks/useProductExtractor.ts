@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { formattedDate } from "@/helpers/dateConverter";
+import { formattedDate } from "@/utils/dateConverter";
 
 export interface Log {
   msg: string;
