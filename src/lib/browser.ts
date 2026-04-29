@@ -41,6 +41,7 @@ export async function getBrowser(): Promise<Browser> {
 export async function closeBrowser() {
   if (cachedBrowser) {
     await cachedBrowser.close();
+    console.log("[Browser] Closed.");
     cachedBrowser = null;
   }
 }

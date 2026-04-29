@@ -15,8 +15,8 @@ model ScrapeJob {
   status         String    @default("running") // 'running', 'completed', 'failed'
   totalItems     Int       @default(0)
   processedItems Int       @default(0)
-  createdAt      String
-  updatedAt      String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
   products       Product[]
 }
 
@@ -36,8 +36,8 @@ model Product {
   materialHealthAssessmentBody String?
   pdfUrl                       String?
   errorReason                  String?
-  createdAt                    String
-  updatedAt                    String
+  createdAt                    DateTime  @default(now())
+  updatedAt                    DateTime  @updatedAt
 
   @@unique([jobId, slug])
 }

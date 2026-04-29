@@ -26,8 +26,6 @@ export async function POST(req: Request) {
         id: clientJobId || undefined,
         totalItems: products.length,
         status: "running",
-        createdAt: now,
-        updatedAt: now,
       }
     });
 
@@ -40,8 +38,6 @@ export async function POST(req: Request) {
       level: p.level,
       standardVersion: p.standardVersion,
       status: "pending",
-      createdAt: now,
-      updatedAt: now,
     }));
 
     await prisma.product.createMany({

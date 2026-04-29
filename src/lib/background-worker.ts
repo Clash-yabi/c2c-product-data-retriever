@@ -1,9 +1,17 @@
 import { prisma } from "@/lib/prisma";
-import { getBrowser } from "./browser";
+import { getBrowser, closeBrowser } from "./browser";
 import { getProductDetail } from "./c2c-scraper";
 import { parseCertificate } from "./pdf-parser";
 import pLimit from "p-limit";
 import { Product as PrismaProduct } from "@prisma/client";
+import { C2CProduct } from "@/types/products";
+
+type PDFData = {
+  leadBody: string;
+  healthBody: string;
+  effectiveDate: string;
+  pdfExpirationDate: string;
+};
 
 const DEFAULT_NA = "N/A";
 const DEFAULT_ERROR = "Error";
@@ -24,7 +32,7 @@ export async function runBackgroundScrape(jobId: string) {
     }
 
     const browser = await getBrowser();
-    const limit = pLimit(3); // strictly 3 tabs
+    const limit = pLimit(1); // strictly 1 tab to stay within Railway memory limits
 
     // 2. Define the worker function
     const processSingleProduct = async (product: PrismaProduct) => {
@@ -43,22 +51,13 @@ export async function runBackgroundScrape(jobId: string) {
           pdfData = await parseCertificate(detail.pdfUrl);
         }
 
-        // Update product in DB as success
+        // 3. Map result to DB format
+        const updateData = mapScrapeResultToProductData(product, detail, pdfData);
+
+        // 4. Update product in DB as success
         await prisma.product.update({
           where: { id: product.id },
-          data: {
-            status: "success",
-            company: (detail.productName !== DEFAULT_NA && detail.company) ? (detail.company as string) : (product.company ?? DEFAULT_NA),
-            productName: (detail.productName !== DEFAULT_NA && detail.productName) ? (detail.productName as string) : (product.productName ?? DEFAULT_NA),
-            level: detail.level || DEFAULT_NA,
-            standardVersion: detail.standardVersion || DEFAULT_NA,
-            effectiveDate: pdfData.effectiveDate,
-            expirationDate: (detail.expirationDate && detail.expirationDate !== DEFAULT_NA) ? detail.expirationDate : pdfData.pdfExpirationDate,
-            leadAssessmentBody: pdfData.leadBody,
-            materialHealthAssessmentBody: pdfData.healthBody,
-            pdfUrl: detail.pdfUrl || DEFAULT_NA,
-            updatedAt: new Date().toISOString(),
-          },
+          data: updateData,
         });
 
       } catch (err: any) {
@@ -69,7 +68,6 @@ export async function runBackgroundScrape(jobId: string) {
           data: { 
             status: "error", 
             errorReason: err.message,
-            updatedAt: new Date().toISOString(),
           },
         });
       } finally {
@@ -78,7 +76,6 @@ export async function runBackgroundScrape(jobId: string) {
           where: { id: jobId },
           data: { 
             processedItems: { increment: 1 },
-            updatedAt: new Date().toISOString(),
           },
         });
       }
@@ -92,7 +89,6 @@ export async function runBackgroundScrape(jobId: string) {
       where: { id: jobId },
       data: { 
         status: "completed",
-        updatedAt: new Date().toISOString(),
       },
     });
     console.log(`Worker: Job ${jobId} completed!`);
@@ -103,8 +99,42 @@ export async function runBackgroundScrape(jobId: string) {
       where: { id: jobId },
       data: { 
         status: "failed",
-        updatedAt: new Date().toISOString(),
       },
     });
+  } finally {
+    // 5. Always close the browser at the end of a job to free up RAM on Railway
+    console.log("Worker: Closing browser to free up memory...");
+    await closeBrowser();
   }
+}
+
+/**
+ * Maps the combined results from the scraper and PDF parser to the database format.
+ * Implements fallback logic to preserve existing data if scraping fails.
+ */
+function mapScrapeResultToProductData(
+  existingProduct: PrismaProduct,
+  scrapedDetail: Partial<C2CProduct>,
+  pdfData: PDFData
+) {
+  const isScrapeValid = scrapedDetail.productName !== DEFAULT_NA;
+
+  return {
+    status: "success" as const,
+    company: (isScrapeValid && scrapedDetail.company) 
+      ? (scrapedDetail.company as string) 
+      : (existingProduct.company ?? DEFAULT_NA),
+    productName: (isScrapeValid && scrapedDetail.productName) 
+      ? (scrapedDetail.productName as string) 
+      : (existingProduct.productName ?? DEFAULT_NA),
+    level: scrapedDetail.level || DEFAULT_NA,
+    standardVersion: scrapedDetail.standardVersion || DEFAULT_NA,
+    effectiveDate: pdfData.effectiveDate,
+    expirationDate: (scrapedDetail.expirationDate && scrapedDetail.expirationDate !== DEFAULT_NA) 
+      ? scrapedDetail.expirationDate 
+      : pdfData.pdfExpirationDate,
+    leadAssessmentBody: pdfData.leadBody,
+    materialHealthAssessmentBody: pdfData.healthBody,
+    pdfUrl: scrapedDetail.pdfUrl || DEFAULT_NA,
+  };
 }
