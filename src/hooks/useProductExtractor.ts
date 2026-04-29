@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { formattedDate } from "@/utils/dateConverter";
+import { v4 as uuidv4 } from "uuid";
 
 export interface Log {
   msg: string;
@@ -108,7 +109,7 @@ export function useProductExtractor() {
       setJobId(savedJobId);
       setIsReconnecting(true);
       setIsExtracting(true); // Assume extracting until proven otherwise
-      addLog(`System: Reconnecting to background job ${savedJobId}...`, "info");
+      addLog(`System: Reconnecting to background session ${savedJobId}...`, "info");
       startPolling(savedJobId);
     }
 
@@ -162,7 +163,7 @@ export function useProductExtractor() {
   const startExtraction = async (limit?: number) => {
     if (isReconnecting || isExtracting) return; 
 
-    const newJobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const newJobId = `job_${uuidv4().split("-")[0]}`;
     
     setIsExtracting(true);
     setProgress(0);
