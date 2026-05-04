@@ -16,7 +16,7 @@ export function DownloadSection({ onDownload, onClear, disabled }: DownloadSecti
         Download Excel Report
       </button>
       <button
-        className="btn btn-outline"
+        className="btn btn-error"
         onClick={onClear}
         disabled={disabled}
       >

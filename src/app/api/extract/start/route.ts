@@ -17,8 +17,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No products found in registry" }, { status: 404 });
     }
 
-    const now = new Date().toISOString();
-
     // 2. Create a new Job in the database
     // Use the client's ID if provided, otherwise let Prisma handle it
     const job = await prisma.scrapeJob.create({

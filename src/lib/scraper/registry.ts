@@ -4,8 +4,8 @@ import {
   BASE_URL,
   TIMEOUT_PAGE_LOAD,
   TIMEOUT_PAGINATION_WAIT,
-  TIMEOUT_SELECTOR_WAIT, 
-  DELAY_PAGINATION_MS 
+  TIMEOUT_SELECTOR_WAIT,
+  DELAY_PAGINATION_MS,
 } from "./constants";
 
 /**
@@ -32,17 +32,17 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
       .catch(() => null);
 
     const totalPages = await page.evaluate(() => {
-      const pageButtons = Array.from(document.querySelectorAll(
-        ".certified-products__pagination-page"
-      ));
+      const pageButtons = Array.from(
+        document.querySelectorAll(".certified-products__pagination-page"),
+      );
       if (pageButtons.length === 0) return 1;
-      
+
       // Filter the buttons to find the highest page number
       // This ignores navigational arrows or "..." if they happen to share the class
       const pageNumbers = pageButtons
-        .map(btn => parseInt(btn.textContent?.trim() || "", 10))
-        .filter(num => !isNaN(num));
-        
+        .map((btn) => parseInt(btn.textContent?.trim() || "", 10))
+        .filter((num) => !isNaN(num));
+
       return pageNumbers.length > 0 ? Math.max(...pageNumbers) : 1;
     });
 
@@ -51,12 +51,14 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
     // Helper: scrape all visible product slugs from the current page state
     const scrapeCurrentPage = async (pageNum: number): Promise<any[]> => {
       await page
-        .waitForSelector("a[href^=\"/certified-products/\"]", { timeout: TIMEOUT_SELECTOR_WAIT })
+        .waitForSelector('a[href^="/certified-products/"]', {
+          timeout: TIMEOUT_SELECTOR_WAIT,
+        })
         .catch(() => null);
 
       const items = await page.evaluate(() => {
         const registryItems = Array.from(
-          document.querySelectorAll("a[href^=\"/certified-products/\"]")
+          document.querySelectorAll('a[href^="/certified-products/"]'),
         );
         const res: any[] = [];
         registryItems.forEach((item) => {
@@ -80,7 +82,9 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
         return res;
       });
 
-      console.log(`getProductsList: Page ${pageNum} returned ${items.length} products.`);
+      console.log(
+        `getProductsList: Page ${pageNum} returned ${items.length} products.`,
+      );
       return items;
     };
 
@@ -91,7 +95,7 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
     });
 
     // Click through pages 2..N using the pagination buttons
-    for (let pageNum = 2; pageNum <= totalPages; pageNum++) { 
+    for (let pageNum = 2; pageNum <= totalPages; pageNum++) {
       if (limit && products.length >= limit) break;
 
       console.log(`getProductsList: Clicking to page ${pageNum}...`);
@@ -99,17 +103,17 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
       try {
         const firstSlugBefore = await page.evaluate(() => {
           const first = document.querySelector(
-            "a[href^=\"/certified-products/\"]:not(.certified-products__pagination-page)"
+            'a[href^="/certified-products/"]:not(.certified-products__pagination-page)',
           );
           return first?.getAttribute("href") || "";
         });
 
         const clicked = await page.evaluate((targetPage: number) => {
           const buttons = Array.from(
-            document.querySelectorAll(".certified-products__pagination-page")
+            document.querySelectorAll(".certified-products__pagination-page"),
           );
           const btn = buttons.find(
-            (b) => b.textContent?.trim() === String(targetPage)
+            (b) => b.textContent?.trim() === String(targetPage),
           ) as HTMLElement;
           if (btn) {
             btn.click();
@@ -120,7 +124,7 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
 
         if (!clicked) {
           console.warn(
-            `getProductsList: Could not find button for page ${pageNum}, stopping.`
+            `getProductsList: Could not find button for page ${pageNum}, stopping.`,
           );
           break;
         }
@@ -128,15 +132,17 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
         await page.waitForFunction(
           (prevSlug: string) => {
             const first = document.querySelector(
-              "a[href^=\"/certified-products/\"]:not(.certified-products__pagination-page)"
+              'a[href^="/certified-products/"]:not(.certified-products__pagination-page)',
             );
             return first?.getAttribute("href") !== prevSlug;
           },
           { timeout: TIMEOUT_PAGINATION_WAIT },
-          firstSlugBefore
+          firstSlugBefore,
         );
 
-        await new Promise((resolve) => setTimeout(resolve, DELAY_PAGINATION_MS));
+        await new Promise((resolve) =>
+          setTimeout(resolve, DELAY_PAGINATION_MS),
+        );
 
         const items = await scrapeCurrentPage(pageNum);
         items.forEach((p) => {
@@ -148,7 +154,7 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
       } catch (err: any) {
         console.error(
           `getProductsList: Error clicking to page ${pageNum}:`,
-          err.message
+          err.message,
         );
         break;
       }
@@ -157,12 +163,14 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
     await page.close();
 
     const finalProducts = limit ? products.slice(0, limit) : products;
-    
+
     // Validate with Zod before returning
-    const validatedProducts = finalProducts.map(p => C2CProductSchema.parse(p));
+    const validatedProducts = finalProducts.map((p) =>
+      C2CProductSchema.parse(p),
+    );
 
     console.log(
-      `getProductsList: Successfully extracted ${validatedProducts.length} unique product entries.`
+      `getProductsList: Successfully extracted ${validatedProducts.length} unique product entries.`,
     );
     return validatedProducts;
   } catch (error) {
