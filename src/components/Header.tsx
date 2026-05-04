@@ -8,7 +8,7 @@ export function Header({ version }: HeaderProps) {
   return (
     <>
       <h1 className="card__title">
-        <Rocket size={60} color="#7F9FD5" /> C2C Scraper {version}
+        <Rocket size={55} color="#00ccffff" /> C2C Scraper {version}
       </h1>
       <p className="subtitle">
         Automated product intelligence for Cradle to Cradle Certified products.

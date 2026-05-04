@@ -47,12 +47,8 @@ body {
   align-items: center;
   gap: 0.5rem;
   font-size: 2.5rem;
-  font-weight: 800;
+  color: var(--text-secondary);
   margin-bottom: 0.5rem;
-  background-image: linear-gradient(-20deg, #6e45e2 0%, #88d3ce 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
 }
 
 p.subtitle {
@@ -134,7 +130,6 @@ p.subtitle {
 
 .btn-error {
   background: var(--error);
-  color: #ebebeb;
 }
 .btn-error:hover {
   background: #f85149;

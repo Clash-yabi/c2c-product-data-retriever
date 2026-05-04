@@ -6,24 +6,24 @@ interface DownloadSectionProps {
   disabled: boolean;
 }
 
-export function DownloadSection({ onDownload, onClear, disabled }: DownloadSectionProps) {
+export function DownloadSection({
+  onDownload,
+  onClear,
+  disabled,
+}: DownloadSectionProps) {
   return (
     <section className="action-container center">
-      <button onClick={onDownload} className="btn btn-success" disabled={disabled}>
-        <span>
-          <Download />
-        </span>{" "}
-        Download Excel Report
+      <button className="btn btn-error" onClick={onClear} disabled={disabled}>
+        <ChevronLeft />
+        Clear & Start Over
       </button>
       <button
-        className="btn btn-error"
-        onClick={onClear}
+        onClick={onDownload}
+        className="btn btn-success"
         disabled={disabled}
       >
-        <span>
-          <ChevronLeft />
-        </span>{" "}
-        Clear & Start Over
+        <Download />
+        Download Excel Report
       </button>
     </section>
   );
