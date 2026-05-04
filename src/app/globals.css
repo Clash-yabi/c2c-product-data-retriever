@@ -98,7 +98,7 @@ p.subtitle {
 }
 
 .progress-bar-fill {
-  background: linear-gradient(90deg, var(--accent-primary), #00CCFFFF);
+  background: linear-gradient(90deg, var(--accent-primary), rgb(242, 7, 69));
   height: 100%;
   width: var(--progress, 0%);
   transition: width 0.3s ease;
