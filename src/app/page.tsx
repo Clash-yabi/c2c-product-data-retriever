@@ -19,6 +19,7 @@ export default function Home() {
     results,
     logEndRef,
     startExtraction,
+    stopExtraction,
     handleDownload,
     clearResults,
   } = useProductExtractor();
@@ -42,10 +43,11 @@ export default function Home() {
            </div>
         ) : (
           <>
-            {!isExtracting && results.length === 0 && (
+            {results.length === 0 && (
               <ActionButtons
                 onStartFull={() => startExtraction()}
                 onStartTest={(limit) => startExtraction(limit)}
+                onStop={stopExtraction}
                 disabled={isExtracting}
               />
             )}

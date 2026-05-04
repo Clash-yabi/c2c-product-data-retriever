@@ -1,9 +1,8 @@
 import { Check, X, ChevronLeft } from "lucide-react";
-import { Log } from "../hooks/useProductExtractor";
 import { RefObject } from "react";
 
 interface LogViewerProps {
-  logs: Log[];
+  logs: any[];
   logEndRef: RefObject<HTMLDivElement | null>;
 }
 
@@ -19,7 +18,7 @@ export function LogViewer({ logs, logEndRef }: LogViewerProps) {
           ) : (
             <ChevronLeft />
           )}
-          {log.msg}
+          {log.message}
         </p>
       ))}
       <div ref={logEndRef} />
