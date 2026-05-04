@@ -27,7 +27,7 @@ export async function runBackgroundScrape(jobId: string) {
     }
 
     const browser = await getBrowser();
-    const limit = pLimit(1); // strictly 1 tab to stay within Railway memory limits
+    const limit = pLimit(3); // strictly 1 tab to stay within Railway memory limits
 
     // 2. Define the worker function
     const processSingleProduct = async (product: PrismaProduct) => {
