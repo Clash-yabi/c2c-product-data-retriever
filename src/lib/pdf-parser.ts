@@ -1,5 +1,6 @@
 import axios from "axios";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
+import { PDFData } from "@/types/products";
 
 const TIMEOUT_PDF_FETCH = 20000;
 const BROWSER_HEADERS = {
@@ -19,12 +20,7 @@ function cleanField(raw: string | undefined): string {
  * Downloads and parses the certificate PDF using pdfjs-dist.
  * Extracts: effectiveDate, expirationDate (backup), leadBody, healthBody
  */
-export async function parseCertificate(pdfUrl: string): Promise<{
-  leadBody: string;
-  healthBody: string;
-  effectiveDate: string;
-  pdfExpirationDate: string;
-}> {
+export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
   const empty = {
     leadBody: "N/A",
     healthBody: "N/A",

@@ -4,17 +4,11 @@ import { getProductDetail } from "./c2c-scraper";
 import { parseCertificate } from "./pdf-parser";
 import pLimit from "p-limit";
 import { Product as PrismaProduct } from "@prisma/client";
-import { C2CProduct } from "@/types/products";
+import { C2CProduct, PDFData } from "@/types/products";
 
-type PDFData = {
-  leadBody: string;
-  healthBody: string;
-  effectiveDate: string;
-  pdfExpirationDate: string;
-};
+
 
 const DEFAULT_NA = "N/A";
-const DEFAULT_ERROR = "Error";
 
 export async function runBackgroundScrape(jobId: string) {
   try {

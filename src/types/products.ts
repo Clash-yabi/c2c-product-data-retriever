@@ -14,3 +14,10 @@ export const C2CProductSchema = z.object({
 });
 
 export type C2CProduct = z.infer<typeof C2CProductSchema>;
+
+export type PDFData = {
+  leadBody: string;
+  healthBody: string;
+  effectiveDate: string;
+  pdfExpirationDate: string;
+};
