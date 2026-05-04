@@ -132,6 +132,14 @@ p.subtitle {
   background: #2ea043;
 }
 
+.btn-error {
+  background: var(--error);
+  color: #ebebeb;
+}
+.btn-error:hover {
+  background: #f85149;
+}
+
 .btn-outline {
   border: 1px solid #30363d;
 }
