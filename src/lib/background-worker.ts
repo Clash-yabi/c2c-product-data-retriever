@@ -27,11 +27,22 @@ export async function runBackgroundScrape(jobId: string) {
     }
 
     const browser = await getBrowser();
-    const limit = pLimit(3); // strictly 1 tab to stay within Railway memory limits
+    const limit = pLimit(3); // Increased to 3 tabs for faster extraction (Railway metrics show room for this)
 
     // 2. Define the worker function
     const processSingleProduct = async (product: PrismaProduct) => {
       try {
+        // 2.1 Check if the job is still active before starting a product
+        const currentJob = await prisma.scrapeJob.findUnique({
+          where: { id: jobId },
+          select: { status: true }
+        });
+
+        if (currentJob?.status !== "running") {
+          console.log(`Worker: Job ${jobId} is no longer running. Aborting ${product.slug}.`);
+          return;
+        }
+
         console.log(`Worker: Extracting ${product.slug}...`);
         const detail = await getProductDetail(browser, product.slug);
 
