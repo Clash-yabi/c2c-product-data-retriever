@@ -1,14 +1,15 @@
 import { prisma } from "@/lib/prisma";
-import { getBrowser, closeBrowser } from "./browser";
-import { getProductDetail } from "./c2c-scraper";
-import { parseCertificate } from "./pdf-parser";
+import { getBrowser, closeBrowser } from "@/lib/browser";
+import { getProductDetail } from "@/lib/c2c-scraper";
+import { parseCertificate } from "@/lib/pdf-parser";
 import pLimit from "p-limit";
 import { Product as PrismaProduct } from "@prisma/client";
 import { C2CProduct, PDFData } from "@/types/products";
+import { DEFAULT_NA } from "@/lib/scraper/constants";
 
 
 
-const DEFAULT_NA = "N/A";
+
 
 export async function runBackgroundScrape(jobId: string) {
   try {

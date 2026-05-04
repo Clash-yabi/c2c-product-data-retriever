@@ -1,6 +1,7 @@
 import axios from "axios";
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf.mjs";
 import { PDFData } from "@/types/products";
+import { DEFAULT_NA } from "@/lib/scraper/constants";
 
 const TIMEOUT_PDF_FETCH = 20000;
 const BROWSER_HEADERS = {
@@ -10,9 +11,9 @@ const BROWSER_HEADERS = {
 
 /** Trim and remove known noise from extracted PDF text fields */
 function cleanField(raw: string | undefined): string {
-  if (!raw) return "N/A";
+  if (!raw) return DEFAULT_NA;
   const cleaned = raw.replace(/\s+/g, " ").trim();
-  if (!cleaned || cleaned.length < 2) return "N/A";
+  if (!cleaned || cleaned.length < 2) return DEFAULT_NA;
   return cleaned;
 }
 
@@ -22,14 +23,14 @@ function cleanField(raw: string | undefined): string {
  */
 export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
   const empty = {
-    leadBody: "N/A",
-    healthBody: "N/A",
-    effectiveDate: "N/A",
-    pdfExpirationDate: "N/A",
+    leadBody: DEFAULT_NA,
+    healthBody: DEFAULT_NA,
+    effectiveDate: DEFAULT_NA,
+    pdfExpirationDate: DEFAULT_NA,
   };
 
   try {
-    if (!pdfUrl || pdfUrl === "N/A") return empty;
+    if (!pdfUrl || pdfUrl === DEFAULT_NA) return empty;
 
     const response = await axios.get(pdfUrl, {
       responseType: "arraybuffer",
@@ -81,7 +82,7 @@ export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
       );
       const effectiveDate = effectiveDateMatch
         ? effectiveDateMatch[1].trim()
-        : "N/A";
+        : DEFAULT_NA;
 
       // ---- Expiration Date (from PDF, as backup) ----
       const expirationDateMatch = text.match(
@@ -89,7 +90,7 @@ export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
       );
       const pdfExpirationDate = expirationDateMatch
         ? expirationDateMatch[1].trim()
-        : "N/A";
+        : DEFAULT_NA;
 
       console.log(
         `parseCertificate: lead="${leadBody}", health="${healthBody}", effective="${effectiveDate}", expiry="${pdfExpirationDate}"`

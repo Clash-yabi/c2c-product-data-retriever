@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { C2CProduct } from "../types/products";
+import { DEFAULT_NA } from "./scraper/constants";
 
 const SHEET_NAME = "C2C Certified Products";
 
@@ -35,15 +36,15 @@ export async function generateC2CExcelReport(results: C2CProduct[]): Promise<Buf
   // Add data
   results.forEach((row) => {
     worksheet.addRow({
-      company: row.company || "N/A",
-      productName: row.productName || "N/A",
-      level: row.level || "N/A",
-      standardVersion: row.standardVersion || "N/A",
-      effectiveDate: row.effectiveDate || "N/A",
-      expirationDate: row.expirationDate || "N/A",
-      leadAssessmentBody: row.leadAssessmentBody || "N/A",
-      materialHealthAssessmentBody: row.materialHealthAssessmentBody || "N/A",
-      pdfUrl: row.pdfUrl || "N/A",
+      company: row.company || DEFAULT_NA,
+      productName: row.productName || DEFAULT_NA,
+      level: row.level || DEFAULT_NA,
+      standardVersion: row.standardVersion || DEFAULT_NA,
+      effectiveDate: row.effectiveDate || DEFAULT_NA,
+      expirationDate: row.expirationDate || DEFAULT_NA,
+      leadAssessmentBody: row.leadAssessmentBody || DEFAULT_NA,
+      materialHealthAssessmentBody: row.materialHealthAssessmentBody || DEFAULT_NA,
+      pdfUrl: row.pdfUrl || DEFAULT_NA,
     });
   });
 
