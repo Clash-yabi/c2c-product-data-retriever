@@ -6,6 +6,7 @@ import pLimit from "p-limit";
 import { Product as PrismaProduct } from "@prisma/client";
 import { C2CProduct, PDFData } from "@/types/products";
 import { DEFAULT_NA } from "@/lib/scraper/constants";
+import { jobEmitter } from "@/lib/event-emitter";
 
 export async function runBackgroundScrape(jobId: string) {
   try {
@@ -90,11 +91,19 @@ export async function runBackgroundScrape(jobId: string) {
         });
       } finally {
         // Increment processedItems regardless of success/fail
-        await prisma.scrapeJob.update({
+        const updatedJob = await prisma.scrapeJob.update({
           where: { id: jobId },
           data: {
             processedItems: { increment: 1 },
           },
+          select: { processedItems: true, totalItems: true },
+        });
+
+        // Event uitzenden naar alle luisteraars (onze SSE route vangt dit op)
+        jobEmitter.emit(`job-${jobId}`, {
+          status: "running",
+          processedItems: updatedJob.processedItems,
+          totalItems: updatedJob.totalItems,
         });
       }
     };
@@ -111,11 +120,18 @@ export async function runBackgroundScrape(jobId: string) {
     });
 
     if (finalJob?.status === "running") {
-      await prisma.scrapeJob.update({
+      const completedJob = await prisma.scrapeJob.update({
         where: { id: jobId },
         data: {
           status: "completed",
         },
+        select: { processedItems: true, totalItems: true },
+      });
+      
+      jobEmitter.emit(`job-${jobId}`, {
+        status: "completed",
+        processedItems: completedJob.processedItems,
+        totalItems: completedJob.totalItems,
       });
       console.log(`Worker: Job ${jobId} completed!`);
     } else {
@@ -125,11 +141,18 @@ export async function runBackgroundScrape(jobId: string) {
     }
   } catch (error) {
     console.error(`Worker: Fatal error in job ${jobId}:`, error);
-    await prisma.scrapeJob.update({
+    const failedJob = await prisma.scrapeJob.update({
       where: { id: jobId },
       data: {
         status: "failed",
       },
+      select: { processedItems: true, totalItems: true },
+    });
+    
+    jobEmitter.emit(`job-${jobId}`, {
+      status: "failed",
+      processedItems: failedJob.processedItems,
+      totalItems: failedJob.totalItems,
     });
   } finally {
     // 5. Always close the browser at the end of a job to free up RAM on Railway

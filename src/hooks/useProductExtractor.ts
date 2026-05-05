@@ -21,8 +21,7 @@ export function useProductExtractor() {
   const [isCompleted, setIsCompleted] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
 
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const retryCountRef = useRef(0);
+  const eventSourceRef = useRef<EventSource | null>(null);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const addLog = useCallback(
@@ -53,24 +52,41 @@ export function useProductExtractor() {
     setLogs([]);
     setIsCompleted(false);
     setIsReconnecting(false);
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
   }, []);
 
-  const startPolling = useCallback(
-    (pollJobId: string) => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+  const startListening = useCallback(
+    (listenJobId: string) => {
+      // Sluit eventuele oude verbinding af
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
 
-      const poll = async () => {
+      const eventSource = new EventSource(`/api/extract/events?jobId=${listenJobId}`);
+      eventSourceRef.current = eventSource;
+
+      eventSource.onmessage = (event) => {
         try {
-          const statusData = await extractionService.getStatus(pollJobId);
-          retryCountRef.current = 0;
+          const statusData = JSON.parse(event.data);
 
           setProgress(statusData.processedItems);
-          setTotal(statusData.totalItems);
+          if (statusData.totalItems) {
+            setTotal(statusData.totalItems);
+          }
+
+          if (statusData.status === "not_found") {
+            addLog("Warning: Active job not found. Clearing state.", "warning");
+            clearResults();
+            eventSource.close();
+            return;
+          }
 
           if (statusData.status === "running") {
             setCurrentProduct(
-              `Extracting... ${statusData.processedItems} / ${statusData.totalItems}`,
+              `Extracting... ${statusData.processedItems} / ${statusData.totalItems || total}`,
             );
             setIsExtracting(true);
             setIsCompleted(false);
@@ -82,7 +98,7 @@ export function useProductExtractor() {
             statusData.status === "failed" ||
             statusData.status === "cancelled"
           ) {
-            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            eventSource.close();
             setIsExtracting(false);
             setCurrentProduct("");
             setIsReconnecting(false);
@@ -94,7 +110,6 @@ export function useProductExtractor() {
                 "success",
               );
             } else if (statusData.status === "cancelled") {
-              addLog("Extraction cancelled successfully.", "warning");
               localStorage.removeItem("c2c_jobId");
               setJobId(null);
             } else {
@@ -102,18 +117,17 @@ export function useProductExtractor() {
             }
           }
         } catch (err) {
-          retryCountRef.current += 1;
-          if (retryCountRef.current > 3) {
-            addLog("Warning: Active job not found. Clearing state.", "warning");
-            clearResults();
-          }
+          console.error("Fout bij parsen van Event-Driven data:", err);
         }
       };
 
-      poll();
-      pollIntervalRef.current = setInterval(poll, 3000);
+      eventSource.onerror = () => {
+        if (eventSource.readyState === EventSource.CLOSED) {
+          addLog("Connection to server lost.", "warning");
+        }
+      };
     },
-    [addLog, clearResults],
+    [addLog, clearResults, total],
   );
 
   const startExtraction = async (limit?: number) => {
@@ -138,7 +152,7 @@ export function useProductExtractor() {
         `Job ${newJobId} confirmed. Found ${startData.totalExpected} products.`,
         "success",
       );
-      startPolling(newJobId);
+      startListening(newJobId);
     } catch (err) {
       addLog("Startup error. Check console.", "error");
       setIsExtracting(false);
@@ -147,12 +161,22 @@ export function useProductExtractor() {
 
   const stopExtraction = async () => {
     if (!jobId) return;
+    
+    // 1. Verbinding direct verbreken zodat we geen events meer ontvangen
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+    }
+    
     addLog("System: Sending stop signal...", "warning");
     try {
       setIsExtracting(false);
       localStorage.removeItem("c2c_jobId");
       setJobId(null);
       await extractionService.stop(jobId);
+      
+      // 2. Direct visuele feedback geven aan de gebruiker (instant UI reactie)
+      addLog("Extraction cancelled successfully.", "warning");
     } catch (err) {
       addLog("Error while stopping job.", "error");
     }
@@ -182,12 +206,14 @@ export function useProductExtractor() {
       setJobId(savedJobId);
       setIsReconnecting(true);
       addLog(`System: Reconnecting to session ${savedJobId}...`, "info");
-      startPolling(savedJobId);
+      startListening(savedJobId);
     }
     setHasHydrated(true);
 
     return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
     };
   }, []);
 
