@@ -24,7 +24,7 @@ model Product {
   id                           String    @id @default(cuid())
   jobId                        String
   job                          ScrapeJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  status                       String    @default("pending") // 'pending', 'success', 'error'
+  status                       String    @default("pending") // 'pending', 'success', 'error', 'cancelled'
   slug                         String
   productName                  String?
   company                      String?

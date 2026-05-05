@@ -7,10 +7,6 @@ import { Product as PrismaProduct } from "@prisma/client";
 import { C2CProduct, PDFData } from "@/types/products";
 import { DEFAULT_NA } from "@/lib/scraper/constants";
 
-
-
-
-
 export async function runBackgroundScrape(jobId: string) {
   try {
     // 1. Fetch pending products for this job
@@ -19,10 +15,16 @@ export async function runBackgroundScrape(jobId: string) {
     });
 
     if (pendingProducts.length === 0) {
-      await prisma.scrapeJob.update({
+      const currentJob = await prisma.scrapeJob.findUnique({
         where: { id: jobId },
-        data: { status: "completed" },
+        select: { status: true },
       });
+      if (currentJob?.status === "running") {
+        await prisma.scrapeJob.update({
+          where: { id: jobId },
+          data: { status: "completed" },
+        });
+      }
       return;
     }
 
@@ -35,11 +37,18 @@ export async function runBackgroundScrape(jobId: string) {
         // 2.1 Check if the job is still active before starting a product
         const currentJob = await prisma.scrapeJob.findUnique({
           where: { id: jobId },
-          select: { status: true }
+          select: { status: true },
         });
 
         if (currentJob?.status !== "running") {
-          console.log(`Worker: Job ${jobId} is no longer running. Aborting ${product.slug}.`);
+          console.log(
+            `Worker: Job ${jobId} is no longer running. Aborting ${product.slug}.`,
+          );
+
+          await prisma.product.update({
+            where: { id: product.id },
+            data: { status: "cancelled" },
+          });
           return;
         }
 
@@ -58,21 +67,24 @@ export async function runBackgroundScrape(jobId: string) {
         }
 
         // 3. Map result to DB format
-        const updateData = mapScrapeResultToProductData(product, detail, pdfData);
+        const updateData = mapScrapeResultToProductData(
+          product,
+          detail,
+          pdfData,
+        );
 
         // 4. Update product in DB as success
         await prisma.product.update({
           where: { id: product.id },
           data: updateData,
         });
-
       } catch (err: any) {
         console.error(`Worker: Error for ${product.slug}:`, err.message);
         // Mark as error
         await prisma.product.update({
           where: { id: product.id },
-          data: { 
-            status: "error", 
+          data: {
+            status: "error",
             errorReason: err.message,
           },
         });
@@ -80,7 +92,7 @@ export async function runBackgroundScrape(jobId: string) {
         // Increment processedItems regardless of success/fail
         await prisma.scrapeJob.update({
           where: { id: jobId },
-          data: { 
+          data: {
             processedItems: { increment: 1 },
           },
         });
@@ -88,22 +100,34 @@ export async function runBackgroundScrape(jobId: string) {
     };
 
     // 3. Process all pending products with strict concurrency limit
-    await Promise.all(pendingProducts.map((p) => limit(() => processSingleProduct(p))));
+    await Promise.all(
+      pendingProducts.map((p) => limit(() => processSingleProduct(p))),
+    );
 
     // 4. Mark job as completed
-    await prisma.scrapeJob.update({
+    const finalJob = await prisma.scrapeJob.findUnique({
       where: { id: jobId },
-      data: { 
-        status: "completed",
-      },
+      select: { status: true },
     });
-    console.log(`Worker: Job ${jobId} completed!`);
 
+    if (finalJob?.status === "running") {
+      await prisma.scrapeJob.update({
+        where: { id: jobId },
+        data: {
+          status: "completed",
+        },
+      });
+      console.log(`Worker: Job ${jobId} completed!`);
+    } else {
+      console.log(
+        `Worker: Job ${jobId} was stopped by user. No status update needed.`,
+      );
+    }
   } catch (error) {
     console.error(`Worker: Fatal error in job ${jobId}:`, error);
     await prisma.scrapeJob.update({
       where: { id: jobId },
-      data: { 
+      data: {
         status: "failed",
       },
     });
@@ -121,24 +145,28 @@ export async function runBackgroundScrape(jobId: string) {
 function mapScrapeResultToProductData(
   existingProduct: PrismaProduct,
   scrapedDetail: Partial<C2CProduct>,
-  pdfData: PDFData
+  pdfData: PDFData,
 ) {
   const isScrapeValid = scrapedDetail.productName !== DEFAULT_NA;
 
   return {
     status: "success" as const,
-    company: (isScrapeValid && scrapedDetail.company) 
-      ? (scrapedDetail.company as string) 
-      : (existingProduct.company ?? DEFAULT_NA),
-    productName: (isScrapeValid && scrapedDetail.productName) 
-      ? (scrapedDetail.productName as string) 
-      : (existingProduct.productName ?? DEFAULT_NA),
+    company:
+      isScrapeValid && scrapedDetail.company
+        ? (scrapedDetail.company as string)
+        : (existingProduct.company ?? DEFAULT_NA),
+    productName:
+      isScrapeValid && scrapedDetail.productName
+        ? (scrapedDetail.productName as string)
+        : (existingProduct.productName ?? DEFAULT_NA),
     level: scrapedDetail.level || DEFAULT_NA,
     standardVersion: scrapedDetail.standardVersion || DEFAULT_NA,
     effectiveDate: pdfData.effectiveDate,
-    expirationDate: (scrapedDetail.expirationDate && scrapedDetail.expirationDate !== DEFAULT_NA) 
-      ? scrapedDetail.expirationDate 
-      : pdfData.pdfExpirationDate,
+    expirationDate:
+      scrapedDetail.expirationDate &&
+      scrapedDetail.expirationDate !== DEFAULT_NA
+        ? scrapedDetail.expirationDate
+        : pdfData.pdfExpirationDate,
     leadAssessmentBody: pdfData.leadBody,
     materialHealthAssessmentBody: pdfData.healthBody,
     pdfUrl: scrapedDetail.pdfUrl || DEFAULT_NA,

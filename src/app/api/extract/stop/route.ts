@@ -6,21 +6,43 @@ export async function POST(req: Request) {
     const { jobId } = await req.json();
 
     if (!jobId) {
-      return NextResponse.json({ error: "Job ID is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Job Id is required" },
+        { status: 400 },
+      );
     }
-
     console.log(`API Stop: Stopping job ${jobId}...`);
 
-    // Use updateMany instead of update to avoid crashing if the jobId doesn't exist
-    // (e.g. if the DB was reset but the client still has an old jobId in localStorage)
-    await prisma.scrapeJob.updateMany({
+    await prisma.scrapeJob.upsert({
       where: { id: jobId },
-      data: { status: "cancelled" },
+      update: { status: "cancelled" },
+      create: {
+        id: jobId,
+        status: "cancelled",
+      },
     });
 
-    return NextResponse.json({ success: true, message: "Stop signal sent to worker" });
+    await prisma.product.updateMany({
+      where: {
+        jobId: jobId,
+        status: "pending", // Alleen de producten die nog moesten gebeuren
+      },
+      data: {
+        status: "cancelled",
+      },
+    });
+
+    return NextResponse.json({
+      message: "Job stopped successfully",
+      jobId: jobId,
+    });
   } catch (error: any) {
-    console.error("Stop error:", error);
-    return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
+    console.log("STOP ERROR:", error);
+    return NextResponse.json(
+      {
+        error: error.message || "Record to update not found",
+      },
+      { status: 500 },
+    );
   }
 }
