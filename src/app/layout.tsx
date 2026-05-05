@@ -19,8 +19,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${forum.variable}`}>
-      <body>{children}</body>
+    <html
+      suppressHydrationWarning={true}
+      lang="en"
+      className={`${forum.variable}`}
+    >
+      <body suppressHydrationWarning={true}>{children}</body>
     </html>
   );
 }
