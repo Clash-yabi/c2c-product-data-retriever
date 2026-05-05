@@ -4,23 +4,22 @@ interface ActionButtonsProps {
   onStartFull: () => void;
   onStartTest: (limit: number) => void;
   onStop: () => void;
-  disabled: boolean;
+  isExtracting: boolean;
 }
 
 export function ActionButtons({
   onStartFull,
   onStartTest,
   onStop,
-  disabled,
+  isExtracting,
 }: ActionButtonsProps) {
   return (
     <section className="action-container center">
-      {!disabled ? (
+      {!isExtracting ? (
         <>
           <button
             className="btn btn-primary"
             onClick={onStartFull}
-            disabled={disabled}
           >
             <span>
               <Rocket />
@@ -30,7 +29,6 @@ export function ActionButtons({
           <button
             className="btn btn-outline"
             onClick={() => onStartTest(15)}
-            disabled={disabled}
           >
             <span>
               <Pipette />

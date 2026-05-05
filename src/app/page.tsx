@@ -12,11 +12,11 @@ export default function Home() {
   const {
     hasHydrated,
     isExtracting,
+    isCompleted,
     progress,
     total,
     currentProduct,
     logs,
-    results,
     logEndRef,
     startExtraction,
     stopExtraction,
@@ -43,12 +43,12 @@ export default function Home() {
            </div>
         ) : (
           <>
-            {results.length === 0 && (
+            {!isCompleted && (
               <ActionButtons
                 onStartFull={() => startExtraction()}
                 onStartTest={(limit) => startExtraction(limit)}
                 onStop={stopExtraction}
-                disabled={isExtracting}
+                isExtracting={isExtracting}
               />
             )}
 
@@ -60,11 +60,10 @@ export default function Home() {
               />
             )}
 
-            {results.length > 0 && !isExtracting && (
+            {isCompleted && (
               <DownloadSection
                 onDownload={handleDownload}
                 onClear={clearResults}
-                disabled={isExtracting}
               />
             )}
           </>
