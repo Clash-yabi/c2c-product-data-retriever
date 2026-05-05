@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { extractionService } from "@/services/extractionService"; 
+import { extractionService } from "@/services/extractionService";
 import { v6 } from "uuid";
 
-interface LogEntry {
+export interface LogEntry {
   message: string;
   type: "info" | "success" | "error" | "warning";
   timestamp: string;
@@ -25,20 +25,23 @@ export function useProductExtractor() {
   const retryCountRef = useRef(0);
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  const addLog = useCallback((message: string, type: LogEntry["type"] = "info") => {
-    setLogs((prev) => [
-      ...prev,
-      {
-        message,
-        type,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        }),
-      },
-    ]);
-  }, []);
+  const addLog = useCallback(
+    (message: string, type: LogEntry["type"] = "info") => {
+      setLogs((prev) => [
+        ...prev,
+        {
+          message,
+          type,
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+          }),
+        },
+      ]);
+    },
+    [],
+  );
 
   const clearResults = useCallback(() => {
     localStorage.removeItem("c2c_jobId");
@@ -53,55 +56,69 @@ export function useProductExtractor() {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
   }, []);
 
-  const startPolling = useCallback((pollJobId: string) => {
-    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+  const startPolling = useCallback(
+    (pollJobId: string) => {
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
 
-    const poll = async () => {
-      try {
-        const statusData = await extractionService.getStatus(pollJobId);
-        retryCountRef.current = 0;
-        
-        setProgress(statusData.processedItems);
-        setTotal(statusData.totalItems);
-        
-        if (statusData.status === "running") {
-          setCurrentProduct(`Extracting... ${statusData.processedItems} / ${statusData.totalItems}`);
-          setIsExtracting(true);
-          setIsCompleted(false);
-          setIsReconnecting(false); 
-        }
+      const poll = async () => {
+        try {
+          const statusData = await extractionService.getStatus(pollJobId);
+          retryCountRef.current = 0;
 
-        if (statusData.status === "completed" || statusData.status === "failed" || statusData.status === "cancelled") {
-          if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-          setIsExtracting(false);
-          setCurrentProduct("");
-          setIsReconnecting(false); 
-          
-          if (statusData.status === "completed") {
-            setIsCompleted(true);
-            addLog("Extraction complete! Click below to download the Excel report.", "success");
-          } else if (statusData.status === "cancelled") {
-            addLog("Extraction cancelled successfully.", "warning");
-            localStorage.removeItem("c2c_jobId");
-            setJobId(null);
-          } else {
-            addLog("Job failed on the server. Check server logs.", "error");
+          setProgress(statusData.processedItems);
+          setTotal(statusData.totalItems);
+
+          if (statusData.status === "running") {
+            setCurrentProduct(
+              `Extracting... ${statusData.processedItems} / ${statusData.totalItems}`,
+            );
+            setIsExtracting(true);
+            setIsCompleted(false);
+            setIsReconnecting(false);
+          }
+
+          if (
+            statusData.status === "completed" ||
+            statusData.status === "failed" ||
+            statusData.status === "cancelled"
+          ) {
+            if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+            setIsExtracting(false);
+            setCurrentProduct("");
+            setIsReconnecting(false);
+
+            if (statusData.status === "completed") {
+              setIsCompleted(true);
+              addLog(
+                "Extraction complete! Click below to download the Excel report.",
+                "success",
+              );
+            } else if (statusData.status === "cancelled") {
+              addLog("Extraction cancelled successfully.", "warning");
+              localStorage.removeItem("c2c_jobId");
+              setJobId(null);
+            } else {
+              addLog("Job failed on the server. Check server logs.", "error");
+            }
+          }
+        } catch (err) {
+          retryCountRef.current += 1;
+          if (retryCountRef.current > 3) {
+            addLog("Warning: Active job not found. Clearing state.", "warning");
+            clearResults();
           }
         }
-      } catch (err) {
-        retryCountRef.current += 1;
-        if (retryCountRef.current > 3) {
-          addLog("Warning: Active job not found. Clearing state.", "warning");
-          clearResults();
-        }
-      }
-    };
+      };
 
-    poll();
-    pollIntervalRef.current = setInterval(poll, 3000);
-  }, [addLog, clearResults]);
+      poll();
+      pollIntervalRef.current = setInterval(poll, 3000);
+    },
+    [addLog, clearResults],
+  );
 
   const startExtraction = async (limit?: number) => {
+    if (isExtracting) return;
+
     const uuid = v6();
     const newJobId = `job_${uuid}`;
 
@@ -117,7 +134,10 @@ export function useProductExtractor() {
       if (!localStorage.getItem("c2c_jobId")) return;
 
       setTotal(startData.totalExpected);
-      addLog(`Job ${newJobId} confirmed. Found ${startData.totalExpected} products.`, "success");
+      addLog(
+        `Job ${newJobId} confirmed. Found ${startData.totalExpected} products.`,
+        "success",
+      );
       startPolling(newJobId);
     } catch (err) {
       addLog("Startup error. Check console.", "error");
@@ -169,7 +189,7 @@ export function useProductExtractor() {
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     };
-  }, []); 
+  }, []);
 
   useEffect(() => {
     if (logEndRef.current) {
@@ -180,11 +200,11 @@ export function useProductExtractor() {
   return {
     hasHydrated,
     isExtracting: isExtracting || isReconnecting,
+    isCompleted,
     progress,
     total,
     currentProduct,
     logs,
-    results: isCompleted ? ["ready"] : [], 
     logEndRef,
     startExtraction,
     stopExtraction,
