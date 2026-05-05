@@ -143,6 +143,15 @@ p.subtitle {
   background: rgba(255, 255, 255, 0.784);
 }
 
+.btn-outline.btn-danger {
+  border-color: #ff4d4d;
+  color: #ff4d4d;
+}
+
+.btn-outline.btn-danger:hover {
+  background: rgba(255, 77, 77, 0.1);
+}
+
 .footer {
   margin-top: 3rem;
   text-align: center;

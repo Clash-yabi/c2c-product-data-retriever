@@ -22,6 +22,7 @@ export function useProductExtractor() {
   const [isReconnecting, setIsReconnecting] = useState(false);
 
   const eventSourceRef = useRef<EventSource | null>(null);
+  const isExtractingRef = useRef(false);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const addLog = useCallback(
@@ -56,6 +57,7 @@ export function useProductExtractor() {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
+    isExtractingRef.current = false;
   }, []);
 
   const startListening = useCallback(
@@ -100,6 +102,7 @@ export function useProductExtractor() {
           ) {
             eventSource.close();
             setIsExtracting(false);
+            isExtractingRef.current = false;
             setCurrentProduct("");
             setIsReconnecting(false);
 
@@ -131,8 +134,9 @@ export function useProductExtractor() {
   );
 
   const startExtraction = async (limit?: number) => {
-    if (isExtracting) return;
-
+    if (isExtracting || isExtractingRef.current) return;
+    
+    isExtractingRef.current = true;
     const uuid = v6();
     const newJobId = `job_${uuid}`;
 
@@ -156,6 +160,7 @@ export function useProductExtractor() {
     } catch (err) {
       addLog("Startup error. Check console.", "error");
       setIsExtracting(false);
+      isExtractingRef.current = false;
     }
   };
 
@@ -171,6 +176,7 @@ export function useProductExtractor() {
     addLog("System: Sending stop signal...", "warning");
     try {
       setIsExtracting(false);
+      isExtractingRef.current = false;
       localStorage.removeItem("c2c_jobId");
       setJobId(null);
       await extractionService.stop(jobId);
@@ -203,6 +209,7 @@ export function useProductExtractor() {
   useEffect(() => {
     const savedJobId = localStorage.getItem("c2c_jobId");
     if (savedJobId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setJobId(savedJobId);
       setIsReconnecting(true);
       addLog(`System: Reconnecting to session ${savedJobId}...`, "info");
@@ -215,7 +222,7 @@ export function useProductExtractor() {
         eventSourceRef.current.close();
       }
     };
-  }, []);
+  }, [addLog, startListening]);
 
   useEffect(() => {
     if (logEndRef.current) {

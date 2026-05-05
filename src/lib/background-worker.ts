@@ -79,14 +79,15 @@ export async function runBackgroundScrape(jobId: string) {
           where: { id: product.id },
           data: updateData,
         });
-      } catch (err: any) {
-        console.error(`Worker: Error for ${product.slug}:`, err.message);
-        // Mark as error
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.error(`Worker: Error for ${product.slug}:`, errorMessage);
+        
         await prisma.product.update({
           where: { id: product.id },
           data: {
             status: "error",
-            errorReason: err.message,
+            errorReason: errorMessage,
           },
         });
       } finally {
@@ -127,7 +128,7 @@ export async function runBackgroundScrape(jobId: string) {
         },
         select: { processedItems: true, totalItems: true },
       });
-      
+
       jobEmitter.emit(`job-${jobId}`, {
         status: "completed",
         processedItems: completedJob.processedItems,
@@ -148,7 +149,7 @@ export async function runBackgroundScrape(jobId: string) {
       },
       select: { processedItems: true, totalItems: true },
     });
-    
+
     jobEmitter.emit(`job-${jobId}`, {
       status: "failed",
       processedItems: failedJob.processedItems,

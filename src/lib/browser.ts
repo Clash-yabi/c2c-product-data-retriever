@@ -1,18 +1,24 @@
 import puppeteer, { Browser } from "puppeteer";
 
-let cachedBrowser: Browser | null = null;
+const BROWSER_KEY = Symbol.for("c2c.browser");
+const globalNode = global as unknown as { [key: symbol]: Browser | null };
+
+if (!(BROWSER_KEY in globalNode)) {
+  globalNode[BROWSER_KEY] = null;
+}
 
 /**
  * Returns a singleton instance of the Puppeteer browser.
  * In development, we try to reuse the instance to save resources.
  */
 export async function getBrowser(): Promise<Browser> {
+  const cachedBrowser = globalNode[BROWSER_KEY];
   if (cachedBrowser && cachedBrowser.connected) {
     return cachedBrowser;
   }
 
   console.log("[Browser] Launching new instance...");
-  cachedBrowser = await puppeteer.launch({
+  const newBrowser = await puppeteer.launch({
     headless: true,
     args: [
       "--no-sandbox",
@@ -24,14 +30,16 @@ export async function getBrowser(): Promise<Browser> {
       "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
     ],
   });
+  
+  globalNode[BROWSER_KEY] = newBrowser;
 
   // Handle browser disconnect/crash
-  cachedBrowser.on("disconnected", () => {
+  newBrowser.on("disconnected", () => {
     console.warn("[Browser] Disconnected. Clearing cache.");
-    cachedBrowser = null;
+    globalNode[BROWSER_KEY] = null;
   });
 
-  return cachedBrowser;
+  return newBrowser;
 }
 
 /**
@@ -39,9 +47,10 @@ export async function getBrowser(): Promise<Browser> {
  * Use this only if you want to completely shut down the scraper system.
  */
 export async function closeBrowser() {
+  const cachedBrowser = globalNode[BROWSER_KEY];
   if (cachedBrowser) {
     await cachedBrowser.close();
     console.log("[Browser] Closed.");
-    cachedBrowser = null;
+    globalNode[BROWSER_KEY] = null;
   }
 }

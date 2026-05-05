@@ -12,7 +12,7 @@ export async function POST(req: Request) {
 
     // 1. Maak de job DIRECT aan in de database, ZELFS voordat we de registry ophalen.
     // Dit voorkomt een race-conditie waarbij de user op F5 drukt en de job nog niet in de DB staat (waardoor de UI de job verwijdert).
-    let job = await initializeScrapeJob(clientJobId, 0);
+    const job = await initializeScrapeJob(clientJobId, 0);
 
     if (!job) {
       return NextResponse.json(

@@ -38,9 +38,8 @@ export function ActionButtons({
         </>
       ) : (
         <button
-          className="btn btn-outline btn-stop"
+          className="btn btn-outline btn-danger"
           onClick={onStop}
-          style={{ borderColor: "#ff4d4d", color: "#ff4d4d" }}
         >
           <span>
             <Square fill="#ff4d4d" size={16} />

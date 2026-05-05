@@ -53,7 +53,7 @@ export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
         const content = await pg.getTextContent();
         // Join with a space to create a flat searchable string
         const pageText = content.items
-          .map((item: any) => ("str" in item ? item.str : ""))
+          .map((item) => ("str" in item ? item.str : ""))
           .join(" ");
         text += pageText + " ";
       }
@@ -97,12 +97,12 @@ export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
       );
 
       return { leadBody, healthBody, effectiveDate, pdfExpirationDate };
-    } catch (pdfErr: any) {
-      console.error(`parseCertificate: PDFjs error for ${pdfUrl}:`, pdfErr.message);
+    } catch (pdfErr: unknown) {
+      console.error(`parseCertificate: PDFjs error for ${pdfUrl}:`, (pdfErr as Error).message || pdfErr);
       return empty;
     }
-  } catch (error: any) {
-    console.error(`parseCertificate: Fetch error for ${pdfUrl}:`, error.message);
+  } catch (error: unknown) {
+    console.error(`parseCertificate: Fetch error for ${pdfUrl}:`, (error as Error).message || error);
     return empty;
   }
 }
