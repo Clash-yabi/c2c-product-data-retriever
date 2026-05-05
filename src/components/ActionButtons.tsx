@@ -29,7 +29,7 @@ export function ActionButtons({
           </button>
           <button
             className="btn btn-outline"
-            onClick={() => onStartTest(3)}
+            onClick={() => onStartTest(15)}
             disabled={disabled}
           >
             <span>

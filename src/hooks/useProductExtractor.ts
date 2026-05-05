@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { extractionService } from "@/services/extractionService";
+import { extractionService } from "@/services/extractionService"; 
+import { v6 } from "uuid";
 
 interface LogEntry {
   message: string;
@@ -101,8 +102,9 @@ export function useProductExtractor() {
   }, [addLog, clearResults]);
 
   const startExtraction = async (limit?: number) => {
-    const newJobId = `job_${Math.random().toString(36).substring(2, 11)}`;
-    
+    const uuid = v6();
+    const newJobId = `job_${uuid}`;
+
     setIsExtracting(true);
     setIsCompleted(false);
     setJobId(newJobId);
