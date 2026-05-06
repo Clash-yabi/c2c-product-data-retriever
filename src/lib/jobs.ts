@@ -6,8 +6,8 @@ export async function initializeScrapeJob(jobId: string, totalItems: number) {
     return await prisma.scrapeJob.create({
       data: { id: jobId, totalItems, status: "running" },
     });
-  } catch (error: any) {
-    if (error.code === "P2002") {
+  } catch (error: unknown) {
+    if ((error as { code?: string })?.code === "P2002") {
       // De job was al 'ge-upsert' door de STOP route!
       return null; // Geef null terug om aan te geven: "Niet starten"
     }

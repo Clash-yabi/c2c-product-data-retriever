@@ -7,7 +7,9 @@ const SHEET_NAME = "C2C Certified Products";
 const HEADER_FONT_COLOR = "FFFFFFFF";
 const HEADER_BG_COLOR = "FF1F6FEB";
 
-export async function generateC2CExcelReport(results: C2CProduct[]): Promise<Buffer> {
+export async function generateC2CExcelReport(
+  results: C2CProduct[],
+): Promise<Buffer> {
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet(SHEET_NAME);
 
@@ -20,7 +22,11 @@ export async function generateC2CExcelReport(results: C2CProduct[]): Promise<Buf
     { header: "Effective Date", key: "effectiveDate", width: 20 },
     { header: "Expiration Date", key: "expirationDate", width: 20 },
     { header: "Lead Assessment Body", key: "leadAssessmentBody", width: 35 },
-    { header: "Material Health Body", key: "materialHealthAssessmentBody", width: 35 },
+    {
+      header: "Material Health Body",
+      key: "materialHealthAssessmentBody",
+      width: 35,
+    },
     { header: "Certificate URL", key: "pdfUrl", width: 60 },
   ];
 
@@ -43,7 +49,8 @@ export async function generateC2CExcelReport(results: C2CProduct[]): Promise<Buf
       effectiveDate: row.effectiveDate || DEFAULT_NA,
       expirationDate: row.expirationDate || DEFAULT_NA,
       leadAssessmentBody: row.leadAssessmentBody || DEFAULT_NA,
-      materialHealthAssessmentBody: row.materialHealthAssessmentBody || DEFAULT_NA,
+      materialHealthAssessmentBody:
+        row.materialHealthAssessmentBody || DEFAULT_NA,
       pdfUrl: row.pdfUrl || DEFAULT_NA,
     });
   });
@@ -51,5 +58,5 @@ export async function generateC2CExcelReport(results: C2CProduct[]): Promise<Buf
   // Write to buffer
   workbook.clearThemes();
   const buffer = await workbook.xlsx.writeBuffer();
-  return Buffer.from(buffer as any);
+  return Buffer.from(buffer as ArrayBuffer);
 }
