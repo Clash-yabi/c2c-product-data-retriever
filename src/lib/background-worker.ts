@@ -9,112 +9,117 @@ import { DEFAULT_NA } from "@/lib/scraper/constants";
 import { jobEmitter } from "@/lib/event-emitter";
 
 export async function runBackgroundScrape(jobId: string) {
+  let lastStatusCheck = 0;
+  let cachedStatus = "running";
+
   try {
-    // 1. Fetch pending products for this job
-    const pendingProducts = await prisma.product.findMany({
-      where: { jobId, status: "pending" },
-    });
+    const limit = pLimit(3); // Concurrency limit for browser tabs
+    let hasMore = true;
 
-    if (pendingProducts.length === 0) {
-      const currentJob = await prisma.scrapeJob.findUnique({
-        where: { id: jobId },
-        select: { status: true },
+    while (hasMore) {
+      // 1. Fetch pending products in batches of 50 (Solves Risk #3: Memory Scaling)
+      const pendingProducts = await prisma.product.findMany({
+        where: { jobId, status: "pending" },
+        take: 50,
       });
-      if (currentJob?.status === "running") {
-        await prisma.scrapeJob.update({
-          where: { id: jobId },
-          data: { status: "completed" },
-        });
+
+      if (pendingProducts.length === 0) {
+        hasMore = false;
+        break;
       }
-      return;
-    }
 
-    const browser = await getBrowser();
-    const limit = pLimit(3); // Increased to 3 tabs for faster extraction (Railway metrics show room for this)
+      const browser = await getBrowser();
 
-    // 2. Define the worker function
-    const processSingleProduct = async (product: PrismaProduct) => {
-      try {
-        // 2.1 Check if the job is still active before starting a product
-        const currentJob = await prisma.scrapeJob.findUnique({
-          where: { id: jobId },
-          select: { status: true },
-        });
+      // 2. Define the worker function for this batch
+      const processSingleProduct = async (product: PrismaProduct) => {
+        try {
+          // 2.1 Throttled Status Check (Solves Risk #2: Database Overhead)
+          // Only hit the DB to check job status every 5 seconds
+          const now = Date.now();
+          if (now - lastStatusCheck > 5000) {
+            const currentJob = await prisma.scrapeJob.findUnique({
+              where: { id: jobId },
+              select: { status: true },
+            });
+            cachedStatus = currentJob?.status || "failed";
+            lastStatusCheck = now;
+          }
 
-        if (currentJob?.status !== "running") {
-          console.log(
-            `Worker: Job ${jobId} is no longer running. Aborting ${product.slug}.`,
+          if (cachedStatus !== "running") {
+            console.log(
+              `Worker: Job ${jobId} is no longer running (${cachedStatus}). Aborting ${product.slug}.`,
+            );
+
+            await prisma.product.update({
+              where: { id: product.id },
+              data: { status: "cancelled" },
+            });
+            return;
+          }
+
+          console.log(`Worker: Extracting ${product.slug}...`);
+          const detail = await getProductDetail(browser, product.slug);
+
+          let pdfData = {
+            leadBody: DEFAULT_NA,
+            healthBody: DEFAULT_NA,
+            effectiveDate: DEFAULT_NA,
+            pdfExpirationDate: DEFAULT_NA,
+          };
+
+          if (detail.pdfUrl && detail.pdfUrl !== DEFAULT_NA) {
+            pdfData = await parseCertificate(detail.pdfUrl);
+          }
+
+          // 3. Map result to DB format
+          const updateData = mapScrapeResultToProductData(
+            product,
+            detail,
+            pdfData,
           );
+
+          // 4. Update product in DB as success
+          await prisma.product.update({
+            where: { id: product.id },
+            data: updateData,
+          });
+        } catch (err: unknown) {
+          const errorMessage = err instanceof Error ? err.message : String(err);
+          console.error(`Worker: Error for ${product.slug}:`, errorMessage);
 
           await prisma.product.update({
             where: { id: product.id },
-            data: { status: "cancelled" },
+            data: {
+              status: "error",
+              errorReason: errorMessage,
+            },
           });
-          return;
+        } finally {
+          // Increment processedItems regardless of success/fail/abort
+          const updatedJob = await prisma.scrapeJob.update({
+            where: { id: jobId },
+            data: {
+              processedItems: { increment: 1 },
+            },
+            select: { processedItems: true, totalItems: true },
+          });
+
+          // Event uitzenden naar alle luisteraars
+          jobEmitter.emit(`job-${jobId}`, {
+            status: cachedStatus === "running" ? "running" : cachedStatus,
+            processedItems: updatedJob.processedItems,
+            totalItems: updatedJob.totalItems,
+          });
         }
+      };
 
-        console.log(`Worker: Extracting ${product.slug}...`);
-        const detail = await getProductDetail(browser, product.slug);
+      // 3. Process the current batch with strict concurrency
+      await Promise.all(
+        pendingProducts.map((p) => limit(() => processSingleProduct(p))),
+      );
+    }
 
-        let pdfData = {
-          leadBody: DEFAULT_NA,
-          healthBody: DEFAULT_NA,
-          effectiveDate: DEFAULT_NA,
-          pdfExpirationDate: DEFAULT_NA,
-        };
-
-        if (detail.pdfUrl && detail.pdfUrl !== DEFAULT_NA) {
-          pdfData = await parseCertificate(detail.pdfUrl);
-        }
-
-        // 3. Map result to DB format
-        const updateData = mapScrapeResultToProductData(
-          product,
-          detail,
-          pdfData,
-        );
-
-        // 4. Update product in DB as success
-        await prisma.product.update({
-          where: { id: product.id },
-          data: updateData,
-        });
-      } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        console.error(`Worker: Error for ${product.slug}:`, errorMessage);
-        
-        await prisma.product.update({
-          where: { id: product.id },
-          data: {
-            status: "error",
-            errorReason: errorMessage,
-          },
-        });
-      } finally {
-        // Increment processedItems regardless of success/fail
-        const updatedJob = await prisma.scrapeJob.update({
-          where: { id: jobId },
-          data: {
-            processedItems: { increment: 1 },
-          },
-          select: { processedItems: true, totalItems: true },
-        });
-
-        // Event uitzenden naar alle luisteraars (onze SSE route vangt dit op)
-        jobEmitter.emit(`job-${jobId}`, {
-          status: "running",
-          processedItems: updatedJob.processedItems,
-          totalItems: updatedJob.totalItems,
-        });
-      }
-    };
-
-    // 3. Process all pending products with strict concurrency limit
-    await Promise.all(
-      pendingProducts.map((p) => limit(() => processSingleProduct(p))),
-    );
-
-    // 4. Mark job as completed
+    // 4. Final check and Mark job as completed
     const finalJob = await prisma.scrapeJob.findUnique({
       where: { id: jobId },
       select: { status: true },
@@ -123,9 +128,7 @@ export async function runBackgroundScrape(jobId: string) {
     if (finalJob?.status === "running") {
       const completedJob = await prisma.scrapeJob.update({
         where: { id: jobId },
-        data: {
-          status: "completed",
-        },
+        data: { status: "completed" },
         select: { processedItems: true, totalItems: true },
       });
 
@@ -137,16 +140,14 @@ export async function runBackgroundScrape(jobId: string) {
       console.log(`Worker: Job ${jobId} completed!`);
     } else {
       console.log(
-        `Worker: Job ${jobId} was stopped by user. No status update needed.`,
+        `Worker: Job ${jobId} finished with status "${finalJob?.status}". No further updates.`,
       );
     }
   } catch (error) {
     console.error(`Worker: Fatal error in job ${jobId}:`, error);
     const failedJob = await prisma.scrapeJob.update({
       where: { id: jobId },
-      data: {
-        status: "failed",
-      },
+      data: { status: "failed" },
       select: { processedItems: true, totalItems: true },
     });
 
@@ -161,6 +162,7 @@ export async function runBackgroundScrape(jobId: string) {
     await closeBrowser();
   }
 }
+
 
 /**
  * Maps the combined results from the scraper and PDF parser to the database format.

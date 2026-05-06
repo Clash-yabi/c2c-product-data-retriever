@@ -10,16 +10,16 @@ import {
 
 /**
  * Fetches the list of all certified products using a shared headless browser.
- */
+*/
 export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
   console.log("getProductsList: Getting browser instance...");
   const browser = await getBrowser();
+  const page = await browser.newPage();
 
   try {
     const products: C2CProduct[] = [];
 
     // Open a single page and keep it open for all pagination clicking
-    const page = await browser.newPage();
     console.log("getProductsList: Loading registry page 1...");
     await page.goto(`${BASE_URL}/certified-products`, {
       waitUntil: "networkidle2",
@@ -49,7 +49,7 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
     console.log(`getProductsList: Detected ${totalPages} total pages.`);
 
     // Helper: scrape all visible product slugs from the current page state
-    const scrapeCurrentPage = async (pageNum: number): Promise<any[]> => {
+    const scrapeCurrentPage = async (pageNum: number): Promise<C2CProduct[]> => {
       await page
         .waitForSelector('a[href^="/certified-products/"]', {
           timeout: TIMEOUT_SELECTOR_WAIT,
@@ -60,7 +60,7 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
         const registryItems = Array.from(
           document.querySelectorAll('a[href^="/certified-products/"]'),
         );
-        const res: any[] = [];
+        const res: C2CProduct[] = [];
         registryItems.forEach((item) => {
           const href = item.getAttribute("href") || "";
           const slug = href.replace("/certified-products/", "");
@@ -151,19 +151,19 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
         });
 
         console.log(`getProductsList: Total collected: ${products.length}`);
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const errorMessage = err instanceof Error ? err.message : "Unknown error";
         console.error(
           `getProductsList: Error clicking to page ${pageNum}:`,
-          err.message,
+          errorMessage,
         );
         break;
       }
     }
 
-    await page.close();
-
+    
     const finalProducts = limit ? products.slice(0, limit) : products;
-
+    
     // Validate with Zod before returning
     const validatedProducts = finalProducts.map((p) =>
       C2CProductSchema.parse(p),
@@ -173,10 +173,12 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
       `getProductsList: Successfully extracted ${validatedProducts.length} unique product entries.`,
     );
     return validatedProducts;
-  } catch (error) {
-    console.error("getProductsList: GLOBAL ERROR:", error);
-    throw error;
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("getProductsList: GLOBAL ERROR:", errorMessage);
+    return [];
   } finally {
+    await page.close().catch(() => null);
     console.log("getProductsList: Task complete.");
   }
 }
