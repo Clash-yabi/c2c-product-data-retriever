@@ -112,12 +112,13 @@ export function useProductExtractor() {
                 "Extraction complete! Click below to download the Excel report.",
                 "success",
               );
-            } else if (statusData.status === "cancelled") {
-              localStorage.removeItem("c2c_jobId");
-              setJobId(null);
-            } else {
+            } else if (statusData.status === "failed") {
               addLog("Job failed on the server. Check server logs.", "error");
             }
+
+            // Cleanup storage for all terminal states
+            localStorage.removeItem("c2c_jobId");
+            setJobId(null);
           }
         } catch (err) {
           console.error("Fout bij parsen van Event-Driven data:", err);
@@ -135,6 +136,9 @@ export function useProductExtractor() {
 
   const startExtraction = async (limit?: number) => {
     if (isExtracting || isExtractingRef.current) return;
+    
+    // Altijd oude sessies opruimen voordat we een nieuwe starten
+    localStorage.removeItem("c2c_jobId");
     
     isExtractingRef.current = true;
     const uuid = v6();
@@ -157,7 +161,9 @@ export function useProductExtractor() {
         "success",
       );
       startListening(newJobId);
-    } catch (err) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      console.error("Start extraction failed:", msg);
       addLog("Startup error. Check console.", "error");
       setIsExtracting(false);
       isExtractingRef.current = false;
@@ -183,7 +189,9 @@ export function useProductExtractor() {
       
       // 2. Direct visuele feedback geven aan de gebruiker (instant UI reactie)
       addLog("Extraction cancelled successfully.", "warning");
-    } catch (err) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      console.error("Stop job failed:", msg);
       addLog("Error while stopping job.", "error");
     }
   };
@@ -201,7 +209,9 @@ export function useProductExtractor() {
       a.click();
       window.URL.revokeObjectURL(url);
       addLog("Report downloaded successfully.", "success");
-    } catch (err) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      console.error("Download failed:", msg);
       addLog("Download failed.", "error");
     }
   };
