@@ -23,11 +23,13 @@ export async function GET(req: Request) {
   const stream = new ReadableStream({
     start(controller) {
       // Helper functie om data te sturen in het 'Server-Sent Events' (SSE) formaat
-      const sendEvent = (data: any) => {
+      const sendEvent = (data: unknown) => {
         try {
           controller.enqueue(`data: ${JSON.stringify(data)}\n\n`);
-        } catch (e) {
-          // Stream is mogelijk al gesloten
+        } catch(err: unknown) {
+          // Stream is mogelijk al gesloten, dit is vaak een normale 'abort'
+          const msg = err instanceof Error ? err.message : "Unknown error";
+          console.log("SSE Stream closed or errored:", msg);
         }
       };
 
@@ -54,12 +56,17 @@ export async function GET(req: Request) {
       // 3. We gaan "luisteren" naar onze backend "Radio Toren" op de frequentie van deze specifieke job
       const eventName = `job-${jobId}`;
       
-      const listener = (data: any) => {
+      const listener = (data: { status: string; [key: string]: unknown }) => {
         sendEvent(data);
         // Sluit de stream als de taak is afgerond
         if (["completed", "failed", "cancelled"].includes(data.status)) {
           jobEmitter.off(eventName, listener);
-          try { controller.close(); } catch(e) {}
+          try { 
+            controller.close(); 
+          } catch(err: unknown) {
+            const msg = err instanceof Error ? err.message : "Unknown error";
+            console.log("SSE Controller close error (likely already closed):", msg);
+          }
         }
       };
 
@@ -68,7 +75,11 @@ export async function GET(req: Request) {
       // 4. Mocht de browser de verbinding verbreken, dan ruimen we netjes op
       req.signal.addEventListener("abort", () => {
         jobEmitter.off(eventName, listener);
-        try { controller.close(); } catch(e) {}
+        try { 
+          controller.close(); 
+        } catch(err) {
+          console.log("SSE Controller abort close error:", err);
+        }
       });
     },
   });

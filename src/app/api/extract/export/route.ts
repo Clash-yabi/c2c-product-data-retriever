@@ -71,10 +71,11 @@ export async function GET(req: Request) {
         "Cache-Control": "no-cache, no-store, must-revalidate",
       },
     });
-  } catch (error: any) {
-    console.error("Export API Error:", error);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
+    console.error("Export API Error:", errorMessage);
     return NextResponse.json(
-      { error: error.message || "Internal Server Error" },
+      { error: errorMessage },
       { status: 500 },
     );
   }

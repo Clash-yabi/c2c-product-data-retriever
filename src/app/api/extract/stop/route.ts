@@ -36,13 +36,9 @@ export async function POST(req: Request) {
       message: "Job stopped successfully",
       jobId: jobId,
     });
-  } catch (error: any) {
-    console.log("STOP ERROR:", error);
-    return NextResponse.json(
-      {
-        error: error.message || "Record to update not found",
-      },
-      { status: 500 },
-    );
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : "Internal Server Error";
+    console.error("Stop API Error:", errorMessage);
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
