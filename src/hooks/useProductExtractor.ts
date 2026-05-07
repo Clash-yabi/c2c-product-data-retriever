@@ -10,221 +10,235 @@ export interface LogEntry {
   timestamp: string;
 }
 
+const getTimestamp = () => new Date().toLocaleTimeString([], {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+});
+
+interface ExtractionState {
+  jobId: string | null;
+  status: "idle" | "running" | "completed" | "failed" | "cancelled" | "reconnecting";
+  progress: number;
+  total: number;
+  currentProduct: string;
+  logs: LogEntry[];
+}
+
 export function useProductExtractor() {
   const [hasHydrated, setHasHydrated] = useState(false);
-  const [jobId, setJobId] = useState<string | null>(null);
-  const [isExtracting, setIsExtracting] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [total, setTotal] = useState(0);
-  const [currentProduct, setCurrentProduct] = useState("");
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [isCompleted, setIsCompleted] = useState(false);
-  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [state, setState] = useState<ExtractionState>({
+    jobId: null,
+    status: "idle",
+    progress: 0,
+    total: 0,
+    currentProduct: "",
+    logs: [],
+  });
 
   const eventSourceRef = useRef<EventSource | null>(null);
-  const isExtractingRef = useRef(false);
+  const isActionInProgress = useRef(false); // Voorkomt dubbele acties tijdens start/stop
   const logEndRef = useRef<HTMLDivElement>(null);
 
-  const addLog = useCallback(
-    (message: string, type: LogEntry["type"] = "info") => {
-      setLogs((prev) => [
-        ...prev,
-        {
-          message,
-          type,
-          timestamp: new Date().toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-          }),
-        },
-      ]);
-    },
-    [],
-  );
+  // Helper voor consistente logging
+  const addLog = useCallback((message: string, type: LogEntry["type"] = "info") => {
+    setState((prev) => ({
+      ...prev,
+      logs: [...prev.logs, { message, type, timestamp: getTimestamp() }],
+    }));
+  }, []);
 
   const clearResults = useCallback(() => {
     localStorage.removeItem("c2c_jobId");
-    setJobId(null);
-    setIsExtracting(false);
-    setProgress(0);
-    setTotal(0);
-    setCurrentProduct("");
-    setLogs([]);
-    setIsCompleted(false);
-    setIsReconnecting(false);
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
-    isExtractingRef.current = false;
+    setState({
+      jobId: null,
+      status: "idle",
+      progress: 0,
+      total: 0,
+      currentProduct: "",
+      logs: [],
+    });
+    isActionInProgress.current = false;
   }, []);
 
-  const startListening = useCallback(
-    (listenJobId: string) => {
-      // Sluit eventuele oude verbinding af
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
+  const startListening = useCallback((listenJobId: string) => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    const eventSource = new EventSource(`/api/extract/events?jobId=${listenJobId}`);
+    eventSourceRef.current = eventSource;
+
+    eventSource.onopen = () => {
+      setState((prev) => {
+        if (prev.status === "reconnecting") {
+          return {
+            ...prev,
+            logs: [...prev.logs, {
+              message: "System: Connection re-established.",
+              type: "success",
+              timestamp: getTimestamp()
+            }]
+          };
+        }
+        return prev;
+      });
+    };
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        if (data.status === "not_found") {
+          addLog("Warning: Active job not found. Resetting state.", "warning");
+          clearResults();
+          return;
+        }
+
+        const isTerminal = ["completed", "failed", "cancelled"].includes(data.status);
+
+        setState((prev) => {
+          const newStatus = data.status;
+          const currentTotal = data.totalItems ?? prev.total;
+          const currentProgress = data.processedItems ?? prev.progress;
+          
+          let updatedLogs = prev.logs;
+          if (data.status === "completed" && prev.status !== "completed") {
+            updatedLogs = [...prev.logs, {
+              message: "Extraction complete! Click below to download the Excel report.",
+              type: "success",
+              timestamp: getTimestamp()
+            }];
+          } else if (data.status === "failed" && prev.status !== "failed") {
+            updatedLogs = [...prev.logs, {
+              message: "Job failed on the server. Check server logs.",
+              type: "error",
+              timestamp: getTimestamp()
+            }];
+          }
+
+          return {
+            ...prev,
+            status: newStatus,
+            progress: currentProgress,
+            total: currentTotal,
+            currentProduct: isTerminal ? "" : `Extracting... ${currentProgress} / ${currentTotal}`,
+            logs: updatedLogs,
+            jobId: listenJobId // Behoud jobId voor downloads, ook na voltooiing
+          };
+        });
+
+        if (isTerminal) {
+          eventSource.close();
+          eventSourceRef.current = null;
+          isActionInProgress.current = false;
+          localStorage.removeItem("c2c_jobId");
+        }
+      } catch (err) {
+        console.error("Fout bij parsen van Event-Driven data:", err);
       }
+    };
 
-      const eventSource = new EventSource(`/api/extract/events?jobId=${listenJobId}`);
-      eventSourceRef.current = eventSource;
+    eventSource.onerror = () => {
+      if (eventSource.readyState === EventSource.CLOSED) {
+        console.warn("SSE Connection lost. Browser will attempt reconnection...");
+      }
+    };
+  }, [addLog, clearResults]);
 
-      eventSource.onmessage = (event) => {
-        try {
-          const statusData = JSON.parse(event.data);
-
-          setProgress(statusData.processedItems);
-          if (statusData.totalItems) {
-            setTotal(statusData.totalItems);
-          }
-
-          if (statusData.status === "not_found") {
-            addLog("Warning: Active job not found. Clearing state.", "warning");
-            clearResults();
-            eventSource.close();
-            return;
-          }
-
-          if (statusData.status === "running") {
-            setCurrentProduct(
-              `Extracting... ${statusData.processedItems} / ${statusData.totalItems || total}`,
-            );
-            setIsExtracting(true);
-            setIsCompleted(false);
-            setIsReconnecting(false);
-          }
-
-          if (
-            statusData.status === "completed" ||
-            statusData.status === "failed" ||
-            statusData.status === "cancelled"
-          ) {
-            eventSource.close();
-            setIsExtracting(false);
-            isExtractingRef.current = false;
-            setCurrentProduct("");
-            setIsReconnecting(false);
-
-            if (statusData.status === "completed") {
-              setIsCompleted(true);
-              addLog(
-                "Extraction complete! Click below to download the Excel report.",
-                "success",
-              );
-            } else if (statusData.status === "failed") {
-              addLog("Job failed on the server. Check server logs.", "error");
-            }
-
-            // Cleanup storage for all terminal states
-            localStorage.removeItem("c2c_jobId");
-            setJobId(null);
-          }
-        } catch (err) {
-          console.error("Fout bij parsen van Event-Driven data:", err);
-        }
-      };
-
-      eventSource.onerror = () => {
-        if (eventSource.readyState === EventSource.CLOSED) {
-          addLog("Connection to server lost.", "warning");
-        }
-      };
-    },
-    [addLog, clearResults, total],
-  );
-
-  const startExtraction = async (limit?: number) => {
-    if (isExtracting || isExtractingRef.current) return;
+  const startExtraction = useCallback(async (limit?: number) => {
+    if (isActionInProgress.current) return;
     
-    // Altijd oude sessies opruimen voordat we een nieuwe starten
+    isActionInProgress.current = true;
     localStorage.removeItem("c2c_jobId");
     
-    isExtractingRef.current = true;
     const uuid = v6();
     const newJobId = `job_${uuid}`;
 
-    setIsExtracting(true);
-    setIsCompleted(false);
-    setJobId(newJobId);
-    setLogs([]);
+    setState({
+      jobId: newJobId,
+      status: "running",
+      progress: 0,
+      total: 0,
+      currentProduct: "Initializing...",
+      logs: [],
+    });
+
     addLog(`System: Starting new ${limit ? "test " : ""}extraction...`, "info");
     localStorage.setItem("c2c_jobId", newJobId);
 
     try {
       const startData = await extractionService.start(newJobId, limit);
-      if (!localStorage.getItem("c2c_jobId")) return;
+      
+      if (localStorage.getItem("c2c_jobId") !== newJobId) return;
 
-      setTotal(startData.totalExpected);
-      addLog(
-        `Job ${newJobId} confirmed. Found ${startData.totalExpected} products.`,
-        "success",
-      );
+      setState(prev => ({ ...prev, total: startData.totalExpected }));
+      addLog(`Job confirmed. Found ${startData.totalExpected} products.`, "success");
+      
       startListening(newJobId);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("Start extraction failed:", msg);
-      addLog("Startup error. Check console.", "error");
-      setIsExtracting(false);
-      isExtractingRef.current = false;
+      addLog(`Startup error: ${msg}`, "error");
+      setState(prev => ({ ...prev, status: "failed" }));
+      isActionInProgress.current = false;
     }
-  };
+  }, [addLog, startListening]);
 
-  const stopExtraction = async () => {
-    if (!jobId) return;
+  const stopExtraction = useCallback(async () => {
+    const currentJobId = state.jobId;
+    if (!currentJobId) return;
     
-    // 1. Verbinding direct verbreken zodat we geen events meer ontvangen
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
     
     addLog("System: Sending stop signal...", "warning");
+    setState(prev => ({ ...prev, status: "cancelled" }));
+    localStorage.removeItem("c2c_jobId");
+    isActionInProgress.current = false;
+
     try {
-      setIsExtracting(false);
-      isExtractingRef.current = false;
-      localStorage.removeItem("c2c_jobId");
-      setJobId(null);
-      await extractionService.stop(jobId);
-      
-      // 2. Direct visuele feedback geven aan de gebruiker (instant UI reactie)
+      await extractionService.stop(currentJobId);
       addLog("Extraction cancelled successfully.", "warning");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("Stop job failed:", msg);
+      console.error("Stop job failed:", err);
       addLog("Error while stopping job.", "error");
     }
-  };
+  }, [state.jobId, addLog]);
 
-  const handleDownload = async () => {
-    if (!jobId) return;
+  const handleDownload = useCallback(async () => {
+    const downloadId = state.jobId;
+    if (!downloadId) return;
+
     addLog("System: Preparing report download...", "info");
     try {
-      const blob = await extractionService.downloadReport(jobId);
+      const blob = await extractionService.downloadReport(downloadId);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `C2C_Report_${jobId}.xlsx`;
+      a.download = `C2C_Report_${downloadId}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
       addLog("Report downloaded successfully.", "success");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("Download failed:", msg);
+      console.error("Download failed:", err);
       addLog("Download failed.", "error");
     }
-  };
+  }, [state.jobId, addLog]);
 
   useEffect(() => {
     const savedJobId = localStorage.getItem("c2c_jobId");
     if (savedJobId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setJobId(savedJobId);
-      setIsReconnecting(true);
+      setState(prev => ({ ...prev, jobId: savedJobId, status: "reconnecting" }));
       addLog(`System: Reconnecting to session ${savedJobId}...`, "info");
       startListening(savedJobId);
-    }
+    } 
     setHasHydrated(true);
 
     return () => {
@@ -232,22 +246,23 @@ export function useProductExtractor() {
         eventSourceRef.current.close();
       }
     };
-  }, [addLog, startListening]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); 
 
   useEffect(() => {
     if (logEndRef.current) {
       logEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [logs]);
+  }, [state.logs]);
 
   return {
     hasHydrated,
-    isExtracting: isExtracting || isReconnecting,
-    isCompleted,
-    progress,
-    total,
-    currentProduct,
-    logs,
+    isExtracting: ["running", "reconnecting"].includes(state.status),
+    isCompleted: state.status === "completed",
+    progress: state.progress,
+    total: state.total,
+    currentProduct: state.currentProduct,
+    logs: state.logs,
     logEndRef,
     startExtraction,
     stopExtraction,
@@ -255,3 +270,4 @@ export function useProductExtractor() {
     clearResults,
   };
 }
+
