@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# C2C Product Data Retriever
 
-## Getting Started
+An advanced, production-grade product extraction system built with Next.js, Puppeteer, and Prisma. This tool automates the retrieval of detailed product information and assessment certificates from the C2C platform https://c2ccertified.org/certified-products.
 
-First, run the development server:
+## 🚀 Key Features
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- **Robust Background Scraper**: High-performance extraction engine using Puppeteer with built-in concurrency management and memory optimization.
+- **Real-time Event Tracking**: Leverages Server-Sent Events (SSE) to provide live updates on extraction progress, item counts, and system logs.
+- **Session Persistence & Recovery**: Automatically recovers active extraction sessions on page reload using `localStorage` and a custom `reconnecting` state.
+- **Modern Tech Stack**: Built with Next.js 14 (App Router), TypeScript, Prisma ORM, and optimized with Google Fonts (Inter & JetBrains Mono).
+- **Automated Report Generation**: One-click Excel export functionality for all extracted product data.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🛠️ Architecture
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- **`useProductExtractor`**: A high-performance custom React hook managing the entire extraction lifecycle, SSE connections, and UI state.
+- **Background Workers**: Isolated scraping logic designed for stability on cloud platforms like Railway, featuring automated browser lifecycle management.
+- **Event-Driven UI**: Atomic state updates and stabilized callbacks to ensure a smooth, flicker-free user experience.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🎨 Design System
 
-## Learn More
+- **Typography**: Optimized with `Inter` for clarity and `JetBrains Mono` for technical log precision.
+- **Aesthetics**: Premium "Dark Mode" console look for the log viewer with micro-animations and status-based iconography.
+- **Performance**: Zero-dependency styling using Vanilla CSS for maximum speed and flexibility.
 
-To learn more about Next.js, take a look at the following resources:
+## 🏁 Getting Started
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Prerequisites
+- Node.js 18+
+- PostgreSQL (or compatible) database
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Installation
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Setup your `.env` with `DATABASE_URL`
+4. Run migrations: `npx prisma migrate dev`
+5. Start development: `npm run dev`
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
