@@ -12,6 +12,7 @@ export function LogViewer({ logs, logEndRef }: LogViewerProps) {
     <aside className="log-container">
       {logs.map((log, i) => (
         <p key={i} className={`log-entry ${log.type}`}>
+          <span className="log-timestamp">[{log.timestamp}]</span>
           {log.type === "success" && <Check size={18} />}
           {log.type === "error" && <X size={18} />}
           {log.type === "warning" && <AlertTriangle size={18} />}
