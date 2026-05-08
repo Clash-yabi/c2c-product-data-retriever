@@ -34,6 +34,12 @@ model Product {
   expirationDate               String?
   leadAssessmentBody           String?
   materialHealthAssessmentBody String?
+  fullScopeLevel               String?
+  fullScopeVersion             String?
+  materialHealthLevel          String?
+  materialHealthVersion        String?
+  circularityLevel             String?
+  circularityVersion           String?
   pdfUrl                       String?
   errorReason                  String?
   createdAt                    DateTime  @default(now())
