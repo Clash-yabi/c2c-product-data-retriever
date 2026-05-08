@@ -17,8 +17,8 @@ export async function generateC2CExcelReport(
   worksheet.columns = [
     { header: "Company", key: "company", width: 25 },
     { header: "Product Name", key: "productName", width: 40 },
-    { header: "Level", key: "level", width: 12 },
-    { header: "Version", key: "standardVersion", width: 12 },
+    { header: "Primary Level", key: "level", width: 12 },
+    { header: "Primary Version", key: "standardVersion", width: 12 },
     { header: "Effective Date", key: "effectiveDate", width: 20 },
     { header: "Expiration Date", key: "expirationDate", width: 20 },
     { header: "Lead Assessment Body", key: "leadAssessmentBody", width: 35 },
@@ -28,6 +28,12 @@ export async function generateC2CExcelReport(
       width: 35,
     },
     { header: "Certificate URL", key: "pdfUrl", width: 60 },
+    { header: "Full Scope Level", key: "fullScopeLevel", width: 15 },
+    { header: "Full Scope Version", key: "fullScopeVersion", width: 15 },
+    { header: "Material Health Level", key: "materialHealthLevel", width: 15 },
+    { header: "Material Health Version", key: "materialHealthVersion", width: 15 },
+    { header: "Circularity Level", key: "circularityLevel", width: 15 },
+    { header: "Circularity Version", key: "circularityVersion", width: 15 },
   ];
 
   // Style header row
@@ -52,6 +58,12 @@ export async function generateC2CExcelReport(
       materialHealthAssessmentBody:
         row.materialHealthAssessmentBody || DEFAULT_NA,
       pdfUrl: row.pdfUrl || DEFAULT_NA,
+      fullScopeLevel: row.fullScopeLevel || DEFAULT_NA,
+      fullScopeVersion: row.fullScopeVersion || DEFAULT_NA,
+      materialHealthLevel: row.materialHealthLevel || DEFAULT_NA,
+      materialHealthVersion: row.materialHealthVersion || DEFAULT_NA,
+      circularityLevel: row.circularityLevel || DEFAULT_NA,
+      circularityVersion: row.circularityVersion || DEFAULT_NA,
     });
   });
 
