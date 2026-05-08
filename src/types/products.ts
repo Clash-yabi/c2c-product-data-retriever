@@ -10,6 +10,12 @@ export const C2CProductSchema = z.object({
   expirationDate: z.string().optional(),
   leadAssessmentBody: z.string().optional(),
   materialHealthAssessmentBody: z.string().optional(),
+  fullScopeLevel: z.string().optional(),
+  fullScopeVersion: z.string().optional(),
+  materialHealthLevel: z.string().optional(),
+  materialHealthVersion: z.string().optional(),
+  circularityLevel: z.string().optional(),
+  circularityVersion: z.string().optional(),
   pdfUrl: z.string().optional().nullable(),
 });
 
