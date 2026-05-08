@@ -28,12 +28,12 @@ export async function generateC2CExcelReport(
       width: 35,
     },
     { header: "Certificate URL", key: "pdfUrl", width: 60 },
-    { header: "Full Scope Level", key: "fullScopeLevel", width: 15 },
-    { header: "Full Scope Version", key: "fullScopeVersion", width: 15 },
-    { header: "Material Health Level", key: "materialHealthLevel", width: 15 },
-    { header: "Material Health Version", key: "materialHealthVersion", width: 15 },
-    { header: "Circularity Level", key: "circularityLevel", width: 15 },
-    { header: "Circularity Version", key: "circularityVersion", width: 15 },
+    { header: "Full Scope Level", key: "fullScopeLevel", width: 20 },
+    { header: "Full Scope Version", key: "fullScopeVersion", width: 20 },
+    { header: "Material Health Level", key: "materialHealthLevel", width: 20 },
+    { header: "Material Health Version", key: "materialHealthVersion", width: 20 },
+    { header: "Circularity Level", key: "circularityLevel", width: 20 },
+    { header: "Circularity Version", key: "circularityVersion", width: 20 },
   ];
 
   // Style header row
