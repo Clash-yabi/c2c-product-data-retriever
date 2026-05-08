@@ -187,6 +187,12 @@ function mapScrapeResultToProductData(
         : (existingProduct.productName ?? DEFAULT_NA),
     level: scrapedDetail.level || DEFAULT_NA,
     standardVersion: scrapedDetail.standardVersion || DEFAULT_NA,
+    fullScopeLevel: scrapedDetail.fullScopeLevel || DEFAULT_NA,
+    fullScopeVersion: scrapedDetail.fullScopeVersion || DEFAULT_NA,
+    materialHealthLevel: scrapedDetail.materialHealthLevel || DEFAULT_NA,
+    materialHealthVersion: scrapedDetail.materialHealthVersion || DEFAULT_NA,
+    circularityLevel: scrapedDetail.circularityLevel || DEFAULT_NA,
+    circularityVersion: scrapedDetail.circularityVersion || DEFAULT_NA,
     effectiveDate: pdfData.effectiveDate,
     expirationDate:
       scrapedDetail.expirationDate &&
