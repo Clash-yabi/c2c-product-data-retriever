@@ -11,6 +11,11 @@ const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono",
 });
 
+export const metadata = {
+  title: "C2C Data Retriever",
+  description: "Advanced product data extraction for Cradle to Cradle certifications.",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
