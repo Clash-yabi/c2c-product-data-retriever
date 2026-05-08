@@ -63,30 +63,50 @@ export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
       );
 
       // ---- Lead Assessment Body ----
-      // Stop BEFORE "Material Health" to avoid greediness
       const leadMatch = text.match(
-        /Lead\s+Assessment\s+Body\s+([\s\S]*?)(?=Material\s+Health|Effective\s+Date|Expiration\s+Date|$)/i
+        /Lead\s+Assessment\s+Body\s+([\s\S]*?)(?=Material\s+Health|Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Elwyn\s+Grainger|Executive\s+Director|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|$)/i
       );
-      const leadBody = cleanField(leadMatch?.[1]);
+      let leadBody = cleanField(leadMatch?.[1]);
 
       // ---- Material Health Assessment Body ----
-      // Stop BEFORE "Effective Date" 
       const healthMatch = text.match(
-        /Material\s+Health\s+Assessment\s+Body\s+([\s\S]*?)(?=Effective\s+Date|Expiration\s+Date|$)/i
+        /Material\s+Health\s+Assessment\s+Body\s+([\s\S]*?)(?=Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Elwyn\s+Grainger|Executive\s+Director|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|$)/i
       );
-      const healthBody = cleanField(healthMatch?.[1]);
+      let healthBody = cleanField(healthMatch?.[1]);
+
+      // Handle Hutchinson-style side-by-side labels where Lead might be empty 
+      // because Material Health was the next word.
+      if (leadBody === DEFAULT_NA && text.includes("Lead Assessment Body") && healthBody !== DEFAULT_NA) {
+        // If they are side by side, healthBody might contain both names.
+        // For now, we apply the user's logic: if only one is found, we can use it for both.
+        leadBody = healthBody;
+      }
+
+      // User Logic: If only one is found, duplicate it to the other so no field is empty
+      if (leadBody !== DEFAULT_NA && healthBody === DEFAULT_NA) {
+        healthBody = leadBody;
+      } else if (healthBody !== DEFAULT_NA && leadBody === DEFAULT_NA) {
+        leadBody = healthBody;
+      }
+
+      // MHC Fallback: If it's an MHC certificate and one is still missing
+      if (healthBody === DEFAULT_NA && leadBody !== DEFAULT_NA && (pdfUrl.includes("MHC") || text.includes("Material Health"))) {
+        healthBody = leadBody;
+      }
 
       // ---- Effective Date ----
+      // Also look for "Issued" as it's common in MHC/Hutchinson
       const effectiveDateMatch = text.match(
-        /Effective\s+Date\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
+        /(?:Effective\s+Date|Issued|Date\s+of\s+Issue)\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
       );
       const effectiveDate = effectiveDateMatch
         ? effectiveDateMatch[1].trim()
         : DEFAULT_NA;
 
-      // ---- Expiration Date (from PDF, as backup) ----
+      // ---- Expiration Date ----
+      // Also look for "Expires"
       const expirationDateMatch = text.match(
-        /Expiration\s+Date\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
+        /(?:Expiration\s+Date|Expires|Valid\s+Until)\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
       );
       const pdfExpirationDate = expirationDateMatch
         ? expirationDateMatch[1].trim()
