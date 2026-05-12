@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
@@ -32,7 +33,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.4",
     "prisma": "^6.19.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.6"
   },
   "overrides": {
     "tar": "^7.0.0"
