@@ -12,7 +12,15 @@ const BROWSER_HEADERS = {
 /** Trim and remove known noise from extracted PDF text fields */
 function cleanField(raw: string | undefined): string {
   if (!raw) return DEFAULT_NA;
-  const cleaned = raw.replace(/\s+/g, " ").trim();
+  
+  // Remove known noise from signature blocks that often gets interleaved
+  let cleaned = raw
+    .replace(/Executive\s+Director/gi, "")
+    .replace(/Elwyn\s+Grainger-Jones/gi, "")
+    .replace(/Cradle\s+to\s+Cradle\s+Products\s+Innovation\s+Institute/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
   if (!cleaned || cleaned.length < 2) return DEFAULT_NA;
   return cleaned;
 }
@@ -63,36 +71,28 @@ export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
       );
 
       // ---- Lead Assessment Body ----
-      const leadMatch = text.match(
-        /Lead\s+Assessment\s+Body\s+([\s\S]*?)(?=Material\s+Health|Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Elwyn\s+Grainger|Executive\s+Director|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|$)/i
-      );
+      const leadRegex = /Lead\s+Assessment\s+Body\s+([\s\S]*?)(?=Material\s+Health|Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+ASSESSED|ASSESSMENT\s+RATINGS|$)/i;
+      const leadMatch = text.match(leadRegex);
       let leadBody = cleanField(leadMatch?.[1]);
 
+      // Determine where to start searching for Health Body (after Lead Body)
+      let searchStartIndex = 0;
+      if (leadMatch && leadMatch.index !== undefined) {
+        searchStartIndex = leadMatch.index + leadMatch[0].length;
+      }
+      const textAfterLead = text.substring(searchStartIndex);
+
       // ---- Material Health Assessment Body ----
-      const healthMatch = text.match(
-        /Material\s+Health\s+Assessment\s+Body\s+([\s\S]*?)(?=Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Elwyn\s+Grainger|Executive\s+Director|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|$)/i
-      );
+      // Use negative lookahead to skip titles (Gold/Silver etc.) and summary keywords (e.g. (no grey chemicals))
+      const healthRegex = /(?:Material\s+Health\s+Assessment(?:\s+Body)?|Material\s+Health(?!\s+(?:Gold|Silver|Bronze|Platinum|Basic|MHC|is\s+optimized|is\s+certified|\(no)))\s+([\s\S]*?)(?=Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+ASSESSED|ASSESSMENT\s+RATINGS|$)/gi;
+      
+      const healthMatches = Array.from(textAfterLead.matchAll(healthRegex));
+      const healthMatch = healthMatches[0];
       let healthBody = cleanField(healthMatch?.[1]);
 
-      // Handle Hutchinson-style side-by-side labels where Lead might be empty 
-      // because Material Health was the next word.
-      if (leadBody === DEFAULT_NA && text.includes("Lead Assessment Body") && healthBody !== DEFAULT_NA) {
-        // If they are side by side, healthBody might contain both names.
-        // For now, we apply the user's logic: if only one is found, we can use it for both.
-        leadBody = healthBody;
-      }
+      console.log(`parseCertificate: healthMatch found: ${healthMatch ? healthMatch[0] : "NONE"}`);
 
-      // User Logic: If only one is found, duplicate it to the other so no field is empty
-      if (leadBody !== DEFAULT_NA && healthBody === DEFAULT_NA) {
-        healthBody = leadBody;
-      } else if (healthBody !== DEFAULT_NA && leadBody === DEFAULT_NA) {
-        leadBody = healthBody;
-      }
-
-      // MHC Fallback: If it's an MHC certificate and one is still missing
-      if (healthBody === DEFAULT_NA && leadBody !== DEFAULT_NA && (pdfUrl.includes("MHC") || text.includes("Material Health"))) {
-        healthBody = leadBody;
-      }
+      // User wants N/A if not specifically found, so we don't fall back to leadBody anymore.
 
       // ---- Effective Date ----
       // Also look for "Issued" as it's common in MHC/Hutchinson

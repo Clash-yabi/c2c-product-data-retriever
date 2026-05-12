@@ -9,8 +9,7 @@ const globalNode = global as unknown as { [key: symbol]: EventEmitter };
 
 if (!globalNode[EMITTER_KEY]) {
   globalNode[EMITTER_KEY] = new EventEmitter();
-  // Bij veel gelijktijdige gebruikers kan dit omhoog, voor nu is 50 ruim voldoende.
-  globalNode[EMITTER_KEY].setMaxListeners(50);
+  // De limiet wordt nu globaal geregeld in prisma.ts via EventEmitter.defaultMaxListeners
 }
 
 export const jobEmitter = globalNode[EMITTER_KEY];
