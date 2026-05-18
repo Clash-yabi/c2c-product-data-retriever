@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { extractionService } from "@/services/extractionService";
+import { formattedDate } from "@/utils/dateConverter";
 import { v6 } from "uuid";
 
 export interface LogEntry {
@@ -264,7 +265,7 @@ export function useProductExtractor() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `C2C_Report_${downloadId}.xlsx`;
+      a.download = `C2C_Report_${formattedDate()}.xlsx`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
