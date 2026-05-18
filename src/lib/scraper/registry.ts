@@ -1,4 +1,5 @@
 import { getBrowser } from "@/lib/browser";
+import { z } from "zod";
 import { C2CProduct, C2CProductSchema } from "@/types/products";
 import {
   BASE_URL,
@@ -10,7 +11,7 @@ import {
 
 /**
  * Fetches the list of all certified products using a shared headless browser.
-*/
+ */
 export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
   console.log("getProductsList: Getting browser instance...");
   const browser = await getBrowser();
@@ -31,7 +32,7 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
       })
       .catch(() => null);
 
-    const totalPages = await page.evaluate(() => {
+    const totalPages = await page.evaluate((): number => {
       const pageButtons = Array.from(
         document.querySelectorAll(".certified-products__pagination-page"),
       );
@@ -56,30 +57,28 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
         })
         .catch(() => null);
 
-      const items = await page.evaluate(() => {
+      const items = await page.evaluate((): C2CProduct[] => {
         const registryItems = Array.from(
           document.querySelectorAll('a[href^="/certified-products/"]'),
         );
-        const res: C2CProduct[] = [];
-        registryItems.forEach((item) => {
-          const href = item.getAttribute("href") || "";
-          const slug = href.replace("/certified-products/", "");
-          if (
-            slug &&
-            !slug.includes("?") &&
-            !slug.includes("/") &&
-            !item.classList.contains("certified-products__pagination-page")
-          ) {
-            res.push({
-              productName: "N/A",
-              company: "N/A",
-              slug,
-              level: "N/A",
-              standardVersion: "N/A",
-            });
-          }
-        });
-        return res;
+        
+        return registryItems
+          .map((item) => {
+            const href = item.getAttribute("href") || "";
+            const slug = href.replace("/certified-products/", "");
+            const isPagination = item.classList.contains("certified-products__pagination-page");
+            return { slug, isPagination };
+          })
+          .filter(({ slug, isPagination }) => 
+            slug && !slug.includes("?") && !slug.includes("/") && !isPagination
+          )
+          .map(({ slug }) => ({
+            productName: "N/A",
+            company: "N/A",
+            slug,
+            level: "N/A",
+            standardVersion: "N/A",
+          }));
       });
 
       console.log(
@@ -101,14 +100,14 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
       console.log(`getProductsList: Clicking to page ${pageNum}...`);
 
       try {
-        const firstSlugBefore = await page.evaluate(() => {
+        const firstSlugBefore = await page.evaluate((): string => {
           const first = document.querySelector(
             'a[href^="/certified-products/"]:not(.certified-products__pagination-page)',
           );
           return first?.getAttribute("href") || "";
         });
 
-        const clicked = await page.evaluate((targetPage: number) => {
+        const clicked = await page.evaluate((targetPage: number): boolean => {
           const buttons = Array.from(
             document.querySelectorAll(".certified-products__pagination-page"),
           );
@@ -161,13 +160,23 @@ export async function getProductsList(limit?: number): Promise<C2CProduct[]> {
       }
     }
 
-    
     const finalProducts = limit ? products.slice(0, limit) : products;
     
-    // Validate with Zod before returning
-    const validatedProducts = finalProducts.map((p) =>
-      C2CProductSchema.parse(p),
-    );
+    // Validate with Zod safely before returning to avoid crashing the whole scraper run
+    const validatedProducts: C2CProduct[] = [];
+    for (const p of finalProducts) {
+      const result = C2CProductSchema.safeParse(p);
+      if (result.success) {
+        validatedProducts.push(result.data);
+      } else {
+        const tree = z.treeifyError(result.error);
+        console.warn(
+          `getProductsList: Skipping invalid product entry with slug "${p.slug}":`,
+          tree,
+        );
+      }
+    }
+
 
     console.log(
       `getProductsList: Successfully extracted ${validatedProducts.length} unique product entries.`,

@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     const validation = startSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json(
-        { error: "Ongeldige input", details: validation.error.format() },
+        { error: "Ongeldige input", details: z.treeifyError(validation.error) },
         { status: 400 }
       );
     }

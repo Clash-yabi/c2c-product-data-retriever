@@ -14,7 +14,7 @@ function cleanField(raw: string | undefined): string {
   if (!raw) return DEFAULT_NA;
   
   // Remove known noise from signature blocks that often gets interleaved
-  let cleaned = raw
+  const cleaned = raw
     .replace(/Executive\s+Director/gi, "")
     .replace(/Elwyn\s+Grainger-Jones/gi, "")
     .replace(/Cradle\s+to\s+Cradle\s+Products\s+Innovation\s+Institute/gi, "")
@@ -59,9 +59,25 @@ export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
       for (let i = 1; i <= doc.numPages; i++) {
         const pg = await doc.getPage(i);
         const content = await pg.getTextContent();
-        const pageText = content.items
-          .map((item) => ("str" in item ? item.str : ""))
-          .join(" ");
+        
+        const items = content.items.filter((item) => "str" in item) as Array<{
+          str: string;
+          transform: number[];
+        }>;
+
+        // Group into left and right columns to prevent horizontally adjacent text from interleaving.
+        // A standard page is ~600pts wide. transform[4] is the starting X coordinate.
+        // The right column typically starts around X=259 in C2C PDFs.
+        // Left column items start < 250. Right column items start >= 250.
+        // Full width paragraphs start < 250, so they stay fully in the left column.
+        const leftItems = items.filter((item) => item.transform[4] < 250);
+        const rightItems = items.filter((item) => item.transform[4] >= 250);
+
+        const pageText =
+          leftItems.map((item) => item.str).join(" ") +
+          " " +
+          rightItems.map((item) => item.str).join(" ");
+
         text += pageText + " ";
       }
 
@@ -100,26 +116,41 @@ export function extractDataFromText(text: string): PDFData {
   // Ensure we are working with normalized text if called directly
   const normalizedText = normalizePDFText(text);
 
-  // ---- Lead Assessment Body ----
-  const leadRegex = /Lead\s+Assessment\s+Body\s+([\s\S]*?)(?=Material\s+Health|Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+ASSESSED|ASSESSMENT\s+RATINGS|$)/i;
-  const leadMatch = normalizedText.match(leadRegex);
-  let leadBody = cleanField(leadMatch?.[1]);
+  // 1. Locate the boundary of the product optimization/checklist summary to restrict our search scope
+  const checklistStartIndex = normalizedText.search(
+    /(?:PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+(?:OF\s+)?CHEMICAL|PERCENTAGE\s+ASSESSED|ASSESSMENT\s+RATINGS)/i
+  );
 
-  // Determine where to start searching for Health Body (after Lead Body)
+  // We want to limit the search to the top of the document (metadata section)
+  // to avoid matching random mentions of "Material Health" in the methodology text.
+  // With column sorting, PERCENTAGE OF CHEMICAL SUBSTANCES is in the left column,
+  // so splitting there truncates the entire right column. We use a safer boundary.
+  const metadataText = normalizedText.split(/Material Health Certificate Guide|Assessment Methodology/i)[0];
+
+  // ---- Lead Assessment Body (Scoped to metadataText) ----
+  const leadRegex =
+    /Lead\s+Assessment\s+Body\s+([\s\S]*?)(?=Material\s+Health|Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Phases\s+and\s+Processes|$)/i;
+  const leadMatch = metadataText.match(leadRegex);
+  const leadBody = cleanField(leadMatch?.[1]);
+
+  // Determine where to start searching for Health Body inside metadataText (after Lead Body)
   let searchStartIndex = 0;
   if (leadMatch && leadMatch.index !== undefined) {
     searchStartIndex = leadMatch.index + leadMatch[0].length;
   }
-  const textAfterLead = normalizedText.substring(searchStartIndex);
+  const textAfterLead = metadataText.substring(searchStartIndex);
 
-  // ---- Material Health Assessment Body ----
-  const healthRegex = /(?:Material\s+Health\s+Assessment(?:\s+Body)?|Material\s+Health(?!\s+(?:Gold|Silver|Bronze|Platinum|Basic|MHC|is\s+optimized|is\s+certified|\(no)))\s+([\s\S]*?)(?=Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+ASSESSED|ASSESSMENT\s+RATINGS|$)/gi;
-  
+  // ---- Material Health Assessment Body (Scoped to metadataText) ----
+  // Exclude false positives like "Material Health optimization strategy", "Material Health Certificate Guide", etc.
+  // Stop capturing at "Effective Date", "Expires", "PRODUCT OPTIMIZATION", "PERCENTAGE OF", etc.
+  const healthRegex =
+    /(?:Material\s+Health\s+Assessment(?:\s+Body)?|Material\s+Health(?!\s+(?:Gold|Silver|Bronze|Platinum|Basic|MHC|is\s+optimized|is\s+certified|\(no|Certificate|achievement|Assessment\s+Methodology|optimization)))\s+([\s\S]*?)(?=Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+OF|Material\s+Health\s+Certificate\s+Guide|$)/gi;
+
   const healthMatches = Array.from(textAfterLead.matchAll(healthRegex));
   const healthMatch = healthMatches[0];
   let healthBody = cleanField(healthMatch?.[1]);
 
-  // ---- Effective Date ----
+  // ---- Effective Date (Global search remains safe) ----
   const effectiveDateMatch = normalizedText.match(
     /(?:Effective\s+Date|Issued|Date\s+of\s+Issue)\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
   );
@@ -127,7 +158,7 @@ export function extractDataFromText(text: string): PDFData {
     ? effectiveDateMatch[1].trim()
     : DEFAULT_NA;
 
-  // ---- Expiration Date ----
+  // ---- Expiration Date (Global search remains safe) ----
   const expirationDateMatch = normalizedText.match(
     /(?:Expiration\s+Date|Expires|Valid\s+Until)\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
   );

@@ -24,171 +24,201 @@ export async function getProductDetail(
     });
 
     const detail = await page.evaluate(() => {
-      const body = document.body.innerText;
-      const productName =
-        document.querySelector("h1")?.textContent?.trim() || "N/A";
+      // --- Helper Functions in Browser Context ---
+      const helpers = {
+        getProductName(): string {
+          return document.querySelector("h1")?.textContent?.trim() || "N/A";
+        },
 
-      // --- 1. Company Name (Semantic -> Sibling Fallback) ---
-      let company = "N/A";
-      const companyEl = document.querySelector(".product-hero__subtitle");
-      if (companyEl && companyEl.textContent?.trim()) {
-        company = companyEl.textContent.trim();
-      } else {
-        // Fallback: first non-empty sibling of h1
-        const h1 = document.querySelector("h1");
-        let sibling = h1?.nextElementSibling;
-        while (sibling) {
-          const t = sibling.textContent?.trim();
-          if (t && t.length > 2 && t !== productName) {
-            company = t;
-            break;
+        getCompany(productName: string): string {
+          const companyEl = document.querySelector(".product-hero__subtitle");
+          if (companyEl && companyEl.textContent?.trim()) {
+            return companyEl.textContent.trim();
           }
-          sibling = sibling.nextElementSibling;
-        }
-      }
 
-      // --- 2. Multi-Certificate Extraction ---
-      let level = "N/A";
-      let standardVersion = "N/A";
-      let fullScopeLevel = "N/A";
-      let fullScopeVersion = "N/A";
-      let materialHealthLevel = "N/A";
-      let materialHealthVersion = "N/A";
-      let circularityLevel = "N/A";
-      let circularityVersion = "N/A";
-
-      const certBlocks = Array.from(
-        document.querySelectorAll(
-          ".certification-info__item, .certification-info__block, .certification-achievement__item, .certification-achievement__block",
-        ),
-      );
-
-      // Fallback: search for any div that looks like a cert block if we found nothing
-      if (certBlocks.length === 0) {
-        const allDivs = Array.from(document.querySelectorAll("div, section"));
-        const potentialBlocks = allDivs.filter((d) =>
-          d.textContent?.includes("C2C Certified®"),
-        );
-        certBlocks.push(...potentialBlocks);
-      }
-
-      certBlocks.forEach((block) => {
-        const text = block.textContent?.trim() || "";
-        if (!text.includes("C2C Certified®")) return;
-
-        // Try to find the label and value within the block
-        const label =
-          block
-            .querySelector(
-              ".certification-info__label, .certification-achievement__label, h4, span",
-            )
-            ?.textContent?.toLowerCase() || text.toLowerCase();
-        
-        const value =
-          block
-            .querySelector(
-              ".certification-info__value, .certification-achievement__value, p, strong",
-            )
-            ?.textContent?.trim() || text;
-
-        // Improved extraction from value string using regex
-        let lvl = "N/A";
-        let ver = "N/A";
-
-        const levelMatch = value.match(/(Bronze|Silver|Gold|Platinum)/i);
-        const versionMatch = value.match(/version\s+([\d.]+)/i);
-
-        if (levelMatch) lvl = levelMatch[1].charAt(0).toUpperCase() + levelMatch[1].slice(1).toLowerCase();
-        if (versionMatch) ver = versionMatch[1];
-
-        // If regex fails, fallback to old split logic
-        if (lvl === "N/A" && value.includes(", version ")) {
-          const parts = value.split(", version ");
-          lvl = parts[0].trim();
-          ver = parts[1].trim();
-        }
-
-        if (label.includes("full scope")) {
-          fullScopeLevel = lvl;
-          fullScopeVersion = ver;
-          if (level === "N/A") {
-            level = lvl;
-            standardVersion = ver;
+          // Fallback: first non-empty sibling of h1
+          const h1 = document.querySelector("h1");
+          let sibling = h1?.nextElementSibling;
+          while (sibling) {
+            const t = sibling.textContent?.trim();
+            if (t && t.length > 2 && t !== productName) {
+              return t;
+            }
+            sibling = sibling.nextElementSibling;
           }
-        } else if (label.includes("material health")) {
-          materialHealthLevel = lvl;
-          materialHealthVersion = ver;
-          if (level === "N/A") {
-            level = lvl;
-            standardVersion = ver;
+          return "N/A";
+        },
+
+        parseLevelAndVersion(value: string): { lvl: string; ver: string } {
+          let lvl = "N/A";
+          let ver = "N/A";
+
+          const levelMatch = value.match(/(Bronze|Silver|Gold|Platinum)/i);
+          const versionMatch = value.match(/version\s+([\d.]+)/i);
+
+          if (levelMatch) {
+            lvl = levelMatch[1].charAt(0).toUpperCase() + levelMatch[1].slice(1).toLowerCase();
           }
-        } else if (label.includes("circularity") || label.includes("circular economy")) {
-          circularityLevel = lvl;
-          circularityVersion = ver;
+          if (versionMatch) {
+            ver = versionMatch[1];
+          }
+
+          // If regex fails, fallback to old split logic
+          if (lvl === "N/A" && value.includes(", version ")) {
+            const parts = value.split(", version ");
+            lvl = parts[0].trim();
+            ver = parts[1].trim();
+          }
+
+          return { lvl, ver };
+        },
+
+        getCertificates(bodyText: string) {
+          let level = "N/A";
+          let standardVersion = "N/A";
+          let fullScopeLevel = "N/A";
+          let fullScopeVersion = "N/A";
+          let materialHealthLevel = "N/A";
+          let materialHealthVersion = "N/A";
+          let circularityLevel = "N/A";
+          let circularityVersion = "N/A";
+
+          const certBlocks = Array.from(
+            document.querySelectorAll(
+              ".certification-info__item, .certification-info__block, .certification-achievement__item, .certification-achievement__block",
+            ),
+          );
+
+          // Fallback: search for any div that looks like a cert block if we found nothing
+          if (certBlocks.length === 0) {
+            const allDivs = Array.from(document.querySelectorAll("div, section"));
+            const potentialBlocks = allDivs.filter((d) =>
+              d.textContent?.includes("C2C Certified®"),
+            );
+            certBlocks.push(...potentialBlocks);
+          }
+
+          certBlocks.forEach((block) => {
+            const text = block.textContent?.trim() || "";
+            if (!text.includes("C2C Certified®")) return;
+
+            // Try to find the label and value within the block
+            const label =
+              block
+                .querySelector(
+                  ".certification-info__label, .certification-achievement__label, h4, span",
+                )
+                ?.textContent?.toLowerCase() || text.toLowerCase();
+            
+            const value =
+              block
+                .querySelector(
+                  ".certification-info__value, .certification-achievement__value, p, strong",
+                )
+                ?.textContent?.trim() || text;
+
+            const { lvl, ver } = helpers.parseLevelAndVersion(value);
+
+            if (label.includes("full scope")) {
+              fullScopeLevel = lvl;
+              fullScopeVersion = ver;
+              if (level === "N/A") {
+                level = lvl;
+                standardVersion = ver;
+              }
+            } else if (label.includes("material health")) {
+              materialHealthLevel = lvl;
+              materialHealthVersion = ver;
+              if (level === "N/A") {
+                level = lvl;
+                standardVersion = ver;
+              }
+            } else if (label.includes("circularity") || label.includes("circular economy")) {
+              circularityLevel = lvl;
+              circularityVersion = ver;
+            }
+          });
+
+          // Fallback: Pattern Match in Body if still N/A
+          if (level === "N/A" || standardVersion === "N/A") {
+            const lvlMatch = bodyText.match(
+              /(Bronze|Silver|Gold|Platinum),\s*version\s+([\d.]+)/i,
+            );
+            if (lvlMatch) {
+              if (level === "N/A") level = lvlMatch[1];
+              if (standardVersion === "N/A") standardVersion = lvlMatch[2];
+            }
+          }
+
+          return {
+            level,
+            standardVersion,
+            fullScopeLevel,
+            fullScopeVersion,
+            materialHealthLevel,
+            materialHealthVersion,
+            circularityLevel,
+            circularityVersion,
+          };
+        },
+
+        getDates(bodyText: string) {
+          let effectiveDate = "N/A";
+          let expirationDate = "N/A";
+
+          const effMatch = bodyText.match(
+            /(?:Effective\s*Date|Date\s*of\s*Issue):\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/i,
+          );
+          const expMatch = bodyText.match(
+            /(?:Expiration\s*Date|Valid\s*Until):\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/i,
+          );
+
+          if (effMatch) effectiveDate = effMatch[1];
+          if (expMatch) expirationDate = expMatch[1];
+
+          return { effectiveDate, expirationDate };
+        },
+
+        getDirectPdfUrl(): string {
+          let pdfUrl = "N/A";
+          const pdfBtn = document.querySelector(
+            "a[href*='certifications'], a[href*='material-health'], button[onclick*='certifications']",
+          );
+          if (pdfBtn) {
+            if (pdfBtn.tagName === "A") {
+              pdfUrl = (pdfBtn as HTMLAnchorElement).href;
+            }
+          }
+
+          // Final Fallback for PDF: scan all links
+          if (pdfUrl === "N/A") {
+            const allLinks = Array.from(document.querySelectorAll("a"));
+            const certLink = allLinks.find(
+              (a) =>
+                (a.href.includes("certifications") ||
+                  a.href.includes("material-health")) &&
+                a.href.endsWith(".pdf"),
+            );
+            if (certLink) pdfUrl = certLink.href;
+          }
+
+          return pdfUrl;
         }
-      });
+      };
 
-      // Fallback: Pattern Match in Body if still N/A
-      if (level === "N/A" || standardVersion === "N/A") {
-        const lvlMatch = body.match(
-          /(Bronze|Silver|Gold|Platinum),\s*version\s+([\d.]+)/i,
-        );
-        if (lvlMatch) {
-          if (level === "N/A") level = lvlMatch[1];
-          if (standardVersion === "N/A") standardVersion = lvlMatch[2];
-        }
-      }
-
-      // --- 3. Dates Extraction (Standard patterns) ---
-      let effectiveDate = "N/A";
-      let expirationDate = "N/A";
-
-      const effMatch = body.match(
-        /(?:Effective\s*Date|Date\s*of\s*Issue):\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/i,
-      );
-      const expMatch = body.match(
-        /(?:Expiration\s*Date|Valid\s*Until):\s*([A-Za-z]+\s+\d{1,2},\s+\d{4})/i,
-      );
-
-      if (effMatch) effectiveDate = effMatch[1];
-      if (expMatch) expirationDate = expMatch[1];
-
-      // --- 4. PDF Link (Direct Selector -> URL Pattern Fallback) ---
-      let pdfUrl = "N/A";
-      const pdfBtn = document.querySelector(
-        "a[href*='certifications'], a[href*='material-health'], button[onclick*='certifications']",
-      );
-      if (pdfBtn) {
-        if (pdfBtn.tagName === "A") {
-          pdfUrl = (pdfBtn as HTMLAnchorElement).href;
-        }
-      }
-
-      // Final Fallback for PDF: scan all links
-      if (pdfUrl === "N/A") {
-        const allLinks = Array.from(document.querySelectorAll("a"));
-        const certLink = allLinks.find(
-          (a) =>
-            (a.href.includes("certifications") ||
-              a.href.includes("material-health")) &&
-            a.href.endsWith(".pdf"),
-        );
-        if (certLink) pdfUrl = certLink.href;
-      }
+      // --- Main Extraction Execution ---
+      const bodyText = document.body.innerText;
+      const productName = helpers.getProductName();
+      const company = helpers.getCompany(productName);
+      const certs = helpers.getCertificates(bodyText);
+      const dates = helpers.getDates(bodyText);
+      const pdfUrl = helpers.getDirectPdfUrl();
 
       return {
         productName,
         company,
-        level,
-        standardVersion,
-        fullScopeLevel,
-        fullScopeVersion,
-        materialHealthLevel,
-        materialHealthVersion,
-        circularityLevel,
-        circularityVersion,
-        effectiveDate,
-        expirationDate,
+        ...certs,
+        ...dates,
         pdfUrl,
       };
     });
