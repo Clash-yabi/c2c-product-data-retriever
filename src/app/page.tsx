@@ -1,6 +1,5 @@
 "use client";
 
-
 import { Header } from "@/components/Header";
 import { ActionButtons } from "@/components/ActionButtons";
 import { ProgressBar } from "@/components/ProgressBar";
@@ -38,9 +37,16 @@ export default function Home() {
           to a background job.
         */}
         {!hasHydrated ? (
-           <div style={{ height: '80px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <p style={{ opacity: 0.5, fontSize: '0.9rem' }}>Initialising...</p>
-           </div>
+          <div
+            style={{
+              height: "80px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <p style={{ opacity: 0.5, fontSize: "0.9rem" }}>Initialising...</p>
+          </div>
         ) : (
           <>
             {!isCompleted && (
@@ -73,9 +79,25 @@ export default function Home() {
       </article>
 
       <footer className="footer">
-        Designed for biannual product inventory updates | &copy; 2026 Sustenuto |{" "}
-        <span className="footer-version">{VERSION}</span>
+        Designed for biannual product inventory updates | &copy; 2026 Sustenuto
+        | <span className="footer-version">{VERSION}</span>
       </footer>
+
+      <div className="white">
+        <div className="squares">
+          <div className="square"></div>
+          <div className="square"></div>
+          <div className="square"></div>
+          <div className="square"></div>
+          <div className="square"></div>
+          <div className="square"></div>
+          <div className="square"></div>
+          <div className="square"></div>
+          <div className="square"></div>
+          <div className="square"></div>
+        </div>
+      </div>
+      <div className="grey"></div>
     </main>
   );
 }
