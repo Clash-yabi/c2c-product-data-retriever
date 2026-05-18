@@ -59,64 +59,20 @@ export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
       for (let i = 1; i <= doc.numPages; i++) {
         const pg = await doc.getPage(i);
         const content = await pg.getTextContent();
-        // Join with a space to create a flat searchable string
         const pageText = content.items
           .map((item) => ("str" in item ? item.str : ""))
           .join(" ");
         text += pageText + " ";
       }
 
-      console.log(
-        `parseCertificate: Raw PDF text (first 400 chars): ${text.substring(0, 400)}`
-      );
-
-      // ---- Lead Assessment Body ----
-      const leadRegex = /Lead\s+Assessment\s+Body\s+([\s\S]*?)(?=Material\s+Health|Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+ASSESSED|ASSESSMENT\s+RATINGS|$)/i;
-      const leadMatch = text.match(leadRegex);
-      let leadBody = cleanField(leadMatch?.[1]);
-
-      // Determine where to start searching for Health Body (after Lead Body)
-      let searchStartIndex = 0;
-      if (leadMatch && leadMatch.index !== undefined) {
-        searchStartIndex = leadMatch.index + leadMatch[0].length;
-      }
-      const textAfterLead = text.substring(searchStartIndex);
-
-      // ---- Material Health Assessment Body ----
-      // Use negative lookahead to skip titles (Gold/Silver etc.) and summary keywords (e.g. (no grey chemicals))
-      const healthRegex = /(?:Material\s+Health\s+Assessment(?:\s+Body)?|Material\s+Health(?!\s+(?:Gold|Silver|Bronze|Platinum|Basic|MHC|is\s+optimized|is\s+certified|\(no)))\s+([\s\S]*?)(?=Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+ASSESSED|ASSESSMENT\s+RATINGS|$)/gi;
-      
-      const healthMatches = Array.from(textAfterLead.matchAll(healthRegex));
-      const healthMatch = healthMatches[0];
-      let healthBody = cleanField(healthMatch?.[1]);
-
-      console.log(`parseCertificate: healthMatch found: ${healthMatch ? healthMatch[0] : "NONE"}`);
-
-      // User wants N/A if not specifically found, so we don't fall back to leadBody anymore.
-
-      // ---- Effective Date ----
-      // Also look for "Issued" as it's common in MHC/Hutchinson
-      const effectiveDateMatch = text.match(
-        /(?:Effective\s+Date|Issued|Date\s+of\s+Issue)\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
-      );
-      const effectiveDate = effectiveDateMatch
-        ? effectiveDateMatch[1].trim()
-        : DEFAULT_NA;
-
-      // ---- Expiration Date ----
-      // Also look for "Expires"
-      const expirationDateMatch = text.match(
-        /(?:Expiration\s+Date|Expires|Valid\s+Until)\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
-      );
-      const pdfExpirationDate = expirationDateMatch
-        ? expirationDateMatch[1].trim()
-        : DEFAULT_NA;
+      // Normalize text once after extraction
+      const normalizedText = normalizePDFText(text);
 
       console.log(
-        `parseCertificate: lead="${leadBody}", health="${healthBody}", effective="${effectiveDate}", expiry="${pdfExpirationDate}"`
+        `parseCertificate: Normalized PDF text (first 400 chars): ${normalizedText.substring(0, 400)}`
       );
 
-      return { leadBody, healthBody, effectiveDate, pdfExpirationDate };
+      return extractDataFromText(normalizedText);
     } catch (pdfErr: unknown) {
       console.error(`parseCertificate: PDFjs error for ${pdfUrl}:`, (pdfErr as Error).message || pdfErr);
       return empty;
@@ -125,4 +81,59 @@ export async function parseCertificate(pdfUrl: string): Promise<PDFData> {
     console.error(`parseCertificate: Fetch error for ${pdfUrl}:`, (error as Error).message || error);
     return empty;
   }
+}
+
+/**
+ * Normalizes PDF text by consolidating all whitespace into single spaces.
+ * This makes regex matching immune to line breaks or weird PDF spacing.
+ */
+function normalizePDFText(text: string): string {
+  return text
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Pure extraction logic separated for testability.
+ */
+export function extractDataFromText(text: string): PDFData {
+  // Ensure we are working with normalized text if called directly
+  const normalizedText = normalizePDFText(text);
+
+  // ---- Lead Assessment Body ----
+  const leadRegex = /Lead\s+Assessment\s+Body\s+([\s\S]*?)(?=Material\s+Health|Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+ASSESSED|ASSESSMENT\s+RATINGS|$)/i;
+  const leadMatch = normalizedText.match(leadRegex);
+  let leadBody = cleanField(leadMatch?.[1]);
+
+  // Determine where to start searching for Health Body (after Lead Body)
+  let searchStartIndex = 0;
+  if (leadMatch && leadMatch.index !== undefined) {
+    searchStartIndex = leadMatch.index + leadMatch[0].length;
+  }
+  const textAfterLead = normalizedText.substring(searchStartIndex);
+
+  // ---- Material Health Assessment Body ----
+  const healthRegex = /(?:Material\s+Health\s+Assessment(?:\s+Body)?|Material\s+Health(?!\s+(?:Gold|Silver|Bronze|Platinum|Basic|MHC|is\s+optimized|is\s+certified|\(no)))\s+([\s\S]*?)(?=Effective\s+Date|Expiration\s+Date|Expires|Issued\s+To|Phases\s+and\s+Processes|PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+ASSESSED|ASSESSMENT\s+RATINGS|$)/gi;
+  
+  const healthMatches = Array.from(textAfterLead.matchAll(healthRegex));
+  const healthMatch = healthMatches[0];
+  let healthBody = cleanField(healthMatch?.[1]);
+
+  // ---- Effective Date ----
+  const effectiveDateMatch = normalizedText.match(
+    /(?:Effective\s+Date|Issued|Date\s+of\s+Issue)\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
+  );
+  const effectiveDate = effectiveDateMatch
+    ? effectiveDateMatch[1].trim()
+    : DEFAULT_NA;
+
+  // ---- Expiration Date ----
+  const expirationDateMatch = normalizedText.match(
+    /(?:Expiration\s+Date|Expires|Valid\s+Until)\s+(\d{1,2}\s+\w+\s+\d{4}|\w+\s+\d{1,2},?\s+\d{4})/i
+  );
+  const pdfExpirationDate = expirationDateMatch
+    ? expirationDateMatch[1].trim()
+    : DEFAULT_NA;
+
+  return { leadBody, healthBody, effectiveDate, pdfExpirationDate };
 }

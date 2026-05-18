@@ -17,8 +17,8 @@ export async function generateC2CExcelReport(
   worksheet.columns = [
     { header: "Company", key: "company", width: 25 },
     { header: "Product Name", key: "productName", width: 40 },
-    { header: "Primary Level", key: "level", width: 12 },
-    { header: "Primary Version", key: "standardVersion", width: 12 },
+    { header: "Primary Level", key: "level", width: 15 },
+    { header: "Primary Version", key: "standardVersion", width: 15 },
     { header: "Effective Date", key: "effectiveDate", width: 20 },
     { header: "Expiration Date", key: "expirationDate", width: 20 },
     { header: "Lead Assessment Body", key: "leadAssessmentBody", width: 35 },
