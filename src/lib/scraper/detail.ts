@@ -30,7 +30,7 @@ export async function getProductDetail(
 
       // --- 1. Company Name (Semantic -> Sibling Fallback) ---
       let company = "N/A";
-      const companyEl = document.querySelector(".product-detail__company");
+      const companyEl = document.querySelector(".product-hero__subtitle");
       if (companyEl && companyEl.textContent?.trim()) {
         company = companyEl.textContent.trim();
       } else {
