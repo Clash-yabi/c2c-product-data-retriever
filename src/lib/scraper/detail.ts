@@ -19,7 +19,7 @@ export async function getProductDetail(
     const url = `${BASE_URL}/certified-products/${slug}`;
     console.log(`getProductDetail: Visiting ${url}...`);
     await page.goto(url, {
-      waitUntil: "networkidle2",
+      waitUntil: "domcontentloaded",
       timeout: TIMEOUT_PAGE_LOAD,
     });
 
@@ -244,12 +244,29 @@ export async function getProductDetail(
         console.log(
           `getProductDetail: Clicking download button for ${slug}...`,
         );
-        // Use page.evaluate for a more reliable click that bypasses some overlay issues
-        await page.evaluate((btn: HTMLElement) => btn.click(), downloadBtn);
+        
+        // Robust click: retry clicking every 500ms until the sidebar link appears (handles React hydration delays)
+        await page.evaluate(() => {
+          return new Promise<void>((resolve) => {
+            const btn = document.querySelector('button.certification-info__btn--download') as HTMLElement;
+            if (!btn) return resolve();
+            
+            let attempts = 0;
+            const interval = setInterval(() => {
+              btn.click();
+              const hasLink = document.querySelector('aside a, .overlay-sidebar a');
+              if (hasLink || attempts >= 10) {
+                clearInterval(interval);
+                resolve();
+              }
+              attempts++;
+            }, 500);
+          });
+        });
 
         // 2. Wait for the sidebar to appear and contain PDF links
-        // We use a more inclusive selector [href*=".pdf"] to handle potential query params
-        const sidebarSelector = '.overlay-sidebar a[href*=".pdf"]';
+        // We use a more inclusive selector to handle potential query params and non-PDF links
+        const sidebarSelector = 'aside a[href*=".pdf"], .overlay-sidebar a[href*=".pdf"], aside a.button--green, .overlay-sidebar a.button--green, aside a[href*="certifications"], .overlay-sidebar a[href*="certifications"]';
         await page
           .waitForSelector(sidebarSelector, { timeout: TIMEOUT_SELECTOR_WAIT })
           .catch(() => {
@@ -261,7 +278,7 @@ export async function getProductDetail(
         // 3. Extract the best PDF link from the sidebar
         pdfUrl = await page.evaluate(() => {
           const links = Array.from(
-            document.querySelectorAll('.overlay-sidebar a[href*=".pdf"]'),
+            document.querySelectorAll('aside a, .overlay-sidebar a'),
           );
           if (links.length === 0) return null;
 
@@ -282,7 +299,14 @@ export async function getProductDetail(
           });
           if (certLink) return certLink.getAttribute("href");
 
-          // Priority 3: Just the first PDF link found
+          // Priority 3: Links containing .pdf or certifications
+          const pdfLink = links.find((l) => {
+            const href = l.getAttribute("href") || "";
+            return href.includes(".pdf") || href.includes("certifications") || href.includes("material-health");
+          });
+          if (pdfLink) return pdfLink.getAttribute("href");
+
+          // Priority 4: Just the first link found
           return links[0].getAttribute("href");
         });
       } else {

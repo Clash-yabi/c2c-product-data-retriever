@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getBrowser, closeBrowser } from "@/lib/browser";
-import { getProductDetail } from "@/lib/c2c-scraper";
+import { getProductDetail } from "@/lib/scraper/detail";
 import { parseCertificate } from "@/lib/pdf-parser";
 import pLimit from "p-limit";
 import { Product as PrismaProduct } from "@prisma/client";
@@ -12,7 +12,10 @@ import { jobEmitter } from "@/lib/event-emitter";
  * Responsible for processing a single product: scraping, parsing, and saving.
  */
 class ProductProcessor {
-  constructor(private jobId: string, private browser: any) {}
+  constructor(
+    private jobId: string,
+    private browser: any,
+  ) {}
 
   async process(product: PrismaProduct, currentStatus: string) {
     try {
@@ -33,23 +36,23 @@ class ProductProcessor {
       const updateData = this.mapScrapeResultToProductData(
         product,
         detail,
-        pdfData
+        pdfData,
       );
 
       await prisma.product.update({
-          where: { id: product.id },
-          data: updateData,
+        where: { id: product.id },
+        data: updateData,
       });
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : String(err);
       console.error(`Worker: Error for ${product.slug}:`, errorMessage);
 
       await prisma.product.update({
-          where: { id: product.id },
-          data: {
-            status: "error",
-            errorReason: errorMessage,
-          },
+        where: { id: product.id },
+        data: {
+          status: "error",
+          errorReason: errorMessage,
+        },
       });
     }
   }
@@ -60,7 +63,7 @@ class ProductProcessor {
   private mapScrapeResultToProductData(
     existingProduct: PrismaProduct,
     scrapedDetail: Partial<C2CProduct>,
-    pdfData: PDFData
+    pdfData: PDFData,
   ) {
     const isScrapeValid = scrapedDetail.productName !== DEFAULT_NA;
 
@@ -126,8 +129,10 @@ class JobOrchestrator {
       // 2. Process the current batch with strict concurrency
       await Promise.all(
         pendingProducts.map((product) =>
-          this.limit(() => this.processProductWithStatusCheck(processor, product))
-        )
+          this.limit(() =>
+            this.processProductWithStatusCheck(processor, product),
+          ),
+        ),
       );
     }
 
@@ -136,7 +141,7 @@ class JobOrchestrator {
 
   private async processProductWithStatusCheck(
     processor: ProductProcessor,
-    product: PrismaProduct
+    product: PrismaProduct,
   ) {
     // Throttled Status Check (Every 5 seconds)
     const now = Date.now();
@@ -151,14 +156,14 @@ class JobOrchestrator {
 
     if (this.cachedStatus !== "running") {
       console.log(
-        `Worker: Job ${this.jobId} is no longer running (${this.cachedStatus}). Aborting ${product.slug}.`
+        `Worker: Job ${this.jobId} is no longer running (${this.cachedStatus}). Aborting ${product.slug}.`,
       );
 
       await prisma.product.update({
-          where: { id: product.id },
-          data: { status: "cancelled" },
+        where: { id: product.id },
+        data: { status: "cancelled" },
       });
-      
+
       // Update job progress even for cancelled items to keep totals correct
       await this.reportProgress(this.cachedStatus);
       return;
@@ -170,9 +175,9 @@ class JobOrchestrator {
 
   private async reportProgress(status: string) {
     const updatedJob = await prisma.scrapeJob.update({
-        where: { id: this.jobId },
-        data: { processedItems: { increment: 1 } },
-        select: { processedItems: true, totalItems: true },
+      where: { id: this.jobId },
+      data: { processedItems: { increment: 1 } },
+      select: { processedItems: true, totalItems: true },
     });
 
     jobEmitter.emit(`job-${this.jobId}`, {
@@ -190,9 +195,9 @@ class JobOrchestrator {
 
     if (finalJob?.status === "running") {
       const completedJob = await prisma.scrapeJob.update({
-          where: { id: this.jobId },
-          data: { status: "completed" },
-          select: { processedItems: true, totalItems: true },
+        where: { id: this.jobId },
+        data: { status: "completed" },
+        select: { processedItems: true, totalItems: true },
       });
 
       jobEmitter.emit(`job-${this.jobId}`, {
@@ -203,23 +208,30 @@ class JobOrchestrator {
       console.log(`Worker: Job ${this.jobId} completed!`);
     } else {
       console.log(
-        `Worker: Job ${this.jobId} finished with status "${finalJob?.status}". No further updates.`
+        `Worker: Job ${this.jobId} finished with status "${finalJob?.status}". No further updates.`,
       );
     }
   }
 
   async handleFatalError(error: unknown) {
-    const failedJob = await prisma.scrapeJob.update({
+    try {
+      console.error(`Worker: Job ${this.jobId} encountered a fatal error:`, error);
+      
+      const failedJob = await prisma.scrapeJob.update({
         where: { id: this.jobId },
         data: { status: "failed" },
         select: { processedItems: true, totalItems: true },
-    });
+      });
 
-    jobEmitter.emit(`job-${this.jobId}`, {
-      status: "failed",
-      processedItems: failedJob.processedItems,
-      totalItems: failedJob.totalItems,
-    });
+      jobEmitter.emit(`job-${this.jobId}`, {
+        status: "failed",
+        processedItems: failedJob.processedItems,
+        totalItems: failedJob.totalItems,
+      });
+    } catch (dbError: unknown) {
+      const errorMessage = dbError instanceof Error ? dbError.message : "Unknown error";
+      console.error(`Worker: Failed to update job status to 'failed' for job ${this.jobId}:`, errorMessage);
+    }
   }
 }
 

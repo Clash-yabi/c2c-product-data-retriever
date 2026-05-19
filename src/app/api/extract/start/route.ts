@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getProductsList } from "@/lib/c2c-scraper";
 import { prisma } from "@/lib/prisma";
-import { runBackgroundScrape } from "@/lib/background-worker";
 import { initializeScrapeJob } from "@/lib/jobs";
+import { runBackgroundScrape } from "@/lib/background-worker";
+import { getProductsList } from "@/lib/scraper/registry";
 
 // We definiëren precies wat we verwachten van de frontend
 const startSchema = z.object({
