@@ -28,7 +28,7 @@ export function ActionButtons({
           </button>
           <button
             className="btn btn-outline"
-            onClick={() => onStartTest(15)}
+            onClick={() => onStartTest(150)}
           >
             <span>
               <Pipette />

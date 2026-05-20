@@ -279,6 +279,7 @@ export function useProductExtractor() {
   useEffect(() => {
     const savedJobId = localStorage.getItem("c2c_jobId");
     if (savedJobId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Client-only state initialization from localStorage during hydration
       setState((prev) => ({
         ...prev,
         jobId: savedJobId,

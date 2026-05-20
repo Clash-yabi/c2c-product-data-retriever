@@ -1,3 +1,4 @@
+import { Browser } from "puppeteer";
 import { prisma } from "@/lib/prisma";
 import { getBrowser, closeBrowser } from "@/lib/browser";
 import { getProductDetail } from "@/lib/scraper/detail";
@@ -5,48 +6,66 @@ import { parseCertificate } from "@/lib/pdf-parser";
 import pLimit from "p-limit";
 import { Product as PrismaProduct } from "@prisma/client";
 import { C2CProduct, PDFData } from "@/types/products";
-import { DEFAULT_NA, TIMEOUT_SHORT_MS } from "@/lib/scraper/constants";
+import { DEFAULT_NA, TIMEOUT_SHORT_MS, SCRAPER_MAX_RETRIES, SCRAPER_RETRY_DELAY_MS, BROWSER_RECYCLE_LIMIT, DELAY_BATCH_MS } from "@/lib/scraper/constants";
 import { jobEmitter } from "@/lib/event-emitter";
 
 /**
  * Responsible for processing a single product: scraping, parsing, and saving.
  */
-class ProductProcessor {
+export class ProductProcessor {
   constructor(
     private jobId: string,
-    private browser: any,
+    private browser: Browser,
   ) {}
 
-  async process(product: PrismaProduct, currentStatus: string) {
-    try {
-      console.log(`Worker: Extracting ${product.slug}...`);
-      const detail = await getProductDetail(this.browser, product.slug);
+  async process(product: PrismaProduct) {
+    let lastError: unknown = null;
+    const maxRetries = SCRAPER_MAX_RETRIES;
 
-      let pdfData: PDFData = {
-        leadBody: DEFAULT_NA,
-        healthBody: DEFAULT_NA,
-        effectiveDate: DEFAULT_NA,
-        pdfExpirationDate: DEFAULT_NA,
-      };
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`Worker: Extracting ${product.slug} (Attempt ${attempt}/${maxRetries})...`);
+        const detail = await getProductDetail(this.browser, product.slug);
 
-      if (detail.pdfUrl && detail.pdfUrl !== DEFAULT_NA) {
-        pdfData = await parseCertificate(detail.pdfUrl);
+        let pdfData: PDFData = {
+          leadBody: DEFAULT_NA,
+          healthBody: DEFAULT_NA,
+          effectiveDate: DEFAULT_NA,
+          pdfExpirationDate: DEFAULT_NA,
+        };
+
+        if (detail.pdfUrl && detail.pdfUrl !== DEFAULT_NA) {
+          pdfData = await parseCertificate(detail.pdfUrl);
+        }
+
+        const updateData = this.mapScrapeResultToProductData(
+          product,
+          detail,
+          pdfData,
+        );
+
+        await prisma.product.update({
+          where: { id: product.id },
+          data: updateData,
+        });
+
+        // Success - exit process
+        return;
+      } catch (err: unknown) {
+        lastError = err;
+        const errorMessage = err instanceof Error ? err.message : String(err);
+        console.warn(`Worker: Attempt ${attempt}/${maxRetries} failed for ${product.slug}:`, errorMessage);
+        
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, SCRAPER_RETRY_DELAY_MS));
+        }
       }
+    }
 
-      const updateData = this.mapScrapeResultToProductData(
-        product,
-        detail,
-        pdfData,
-      );
+    const errorMessage = lastError instanceof Error ? lastError.message : String(lastError);
+    console.error(`Worker: All ${maxRetries} attempts failed for ${product.slug}. Final error:`, errorMessage);
 
-      await prisma.product.update({
-        where: { id: product.id },
-        data: updateData,
-      });
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      console.error(`Worker: Error for ${product.slug}:`, errorMessage);
-
+    try {
       await prisma.product.update({
         where: { id: product.id },
         data: {
@@ -54,6 +73,9 @@ class ProductProcessor {
           errorReason: errorMessage,
         },
       });
+    } catch (dbErr: unknown) {
+      console.error(`Worker: Double fault. Failed to save error status for ${product.slug}:`, dbErr);
+      throw dbErr;
     }
   }
 
@@ -105,6 +127,7 @@ class JobOrchestrator {
   private lastStatusCheck = 0;
   private cachedStatus = "running";
   private limit = pLimit(3);
+  private productsProcessedSinceLastRecycle = 0;
 
   constructor(private jobId: string) {}
 
@@ -123,17 +146,38 @@ class JobOrchestrator {
         break;
       }
 
+      // Recycle the browser if threshold is reached
+      if (this.productsProcessedSinceLastRecycle >= BROWSER_RECYCLE_LIMIT) {
+        console.log(`Worker: Recycle threshold reached (${this.productsProcessedSinceLastRecycle} >= ${BROWSER_RECYCLE_LIMIT}). Relaunching browser...`);
+        await closeBrowser();
+        this.productsProcessedSinceLastRecycle = 0;
+      }
+
       const browser = await getBrowser();
       const processor = new ProductProcessor(this.jobId, browser);
 
       // 2. Process the current batch with strict concurrency
-      await Promise.all(
+      const results = await Promise.allSettled(
         pendingProducts.map((product) =>
           this.limit(() =>
             this.processProductWithStatusCheck(processor, product),
           ),
         ),
       );
+
+      // Check if any task failed fatally (e.g. database error)
+      const rejectedResult = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+      if (rejectedResult) {
+        throw rejectedResult.reason;
+      }
+
+      this.productsProcessedSinceLastRecycle += pendingProducts.length;
+
+      // Add pacing delay between batches if there might be more products to process
+      if (pendingProducts.length === 50) {
+        console.log(`Worker: Batch completed. Pacing delay of ${DELAY_BATCH_MS}ms...`);
+        await new Promise((resolve) => setTimeout(resolve, DELAY_BATCH_MS));
+      }
     }
 
     await this.completeJob();
@@ -169,7 +213,7 @@ class JobOrchestrator {
       return;
     }
 
-    await processor.process(product, this.cachedStatus);
+    await processor.process(product);
     await this.reportProgress(this.cachedStatus);
   }
 

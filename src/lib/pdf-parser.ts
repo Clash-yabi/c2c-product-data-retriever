@@ -116,11 +116,6 @@ export function extractDataFromText(text: string): PDFData {
   // Ensure we are working with normalized text if called directly
   const normalizedText = normalizePDFText(text);
 
-  // 1. Locate the boundary of the product optimization/checklist summary to restrict our search scope
-  const checklistStartIndex = normalizedText.search(
-    /(?:PRODUCT\s+OPTIMIZATION|PERCENTAGE\s+(?:OF\s+)?CHEMICAL|PERCENTAGE\s+ASSESSED|ASSESSMENT\s+RATINGS)/i
-  );
-
   // We want to limit the search to the top of the document (metadata section)
   // to avoid matching random mentions of "Material Health" in the methodology text.
   // With column sorting, PERCENTAGE OF CHEMICAL SUBSTANCES is in the left column,
@@ -148,7 +143,7 @@ export function extractDataFromText(text: string): PDFData {
 
   const healthMatches = Array.from(textAfterLead.matchAll(healthRegex));
   const healthMatch = healthMatches[0];
-  let healthBody = cleanField(healthMatch?.[1]);
+  const healthBody = cleanField(healthMatch?.[1]);
 
   // ---- Effective Date (Global search remains safe) ----
   const effectiveDateMatch = normalizedText.match(
