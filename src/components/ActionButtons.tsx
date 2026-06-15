@@ -26,7 +26,7 @@ export function ActionButtons({
             </span>{" "}
             Start Full Extraction
           </button>
-          <button
+          {/* <button
             className="btn btn-outline"
             onClick={() => onStartTest(150)}
           >
@@ -34,7 +34,7 @@ export function ActionButtons({
               <Pipette />
             </span>{" "}
             Run Test (50 products)
-          </button>
+          </button> */}
         </>
       ) : (
         <button
