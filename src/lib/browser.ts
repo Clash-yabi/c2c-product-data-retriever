@@ -25,6 +25,7 @@ export async function getBrowser(): Promise<Browser> {
   console.log("[Browser] Launching new instance...");
   launchPromise = puppeteer.launch({
     headless: true,
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     args: [
       "--no-sandbox",
       "--disable-setuid-sandbox",

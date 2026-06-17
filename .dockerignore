@@ -1,0 +1,23 @@
+# Dependencies
+node_modules
+
+# Next.js build output
+.next
+out
+
+# Git history
+.git
+
+# Local database files — container always starts with a fresh db
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Local env secrets — pass these as Azure environment variables instead
+.env
+.env.local
+.env.*.local
+
+# Dev tooling
+scratch
