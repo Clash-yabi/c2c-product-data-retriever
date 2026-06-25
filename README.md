@@ -346,3 +346,4 @@ docker run -p 3000:3000 \
 ---
 
 *Built with ❤️ — C2C Product Data Retriever*
+by Yabetse Solomon
